@@ -1,6 +1,30 @@
 AgentArena -- Release Notes
 ===========================
 
+Version 01.04.00 (2026-08-03)
+---------------------------
+Roadmap phase v01.04 -- WebSocket protocol & move authority. THE v01 GATE.
+
+- ConnectionManager: per-match sockets, broadcast that serialises once for the
+  room and prunes a socket failing mid-send, and close_room. The five server
+  events and two client actions of architecture.md 6.2 are pinned by a contract
+  test -- including that no your_turn event exists, since the turn is derived.
+- Transaction ownership moved to the callers: Repository methods flush, never
+  commit, so a request that fails partway leaves nothing behind and a move can
+  be written together with the match result.
+- The WS endpoint: bad token closes 4001, joined reports the seat, and cleanup
+  survives the cancellation a client-initiated drop actually produces -- it runs
+  detached on its own session, because a cancelled task cannot await.
+- submit_move runs the 5.4 authority flow. The symbol comes from the token, never
+  from the message, and the flow READS the seat rather than assigning one.
+- chat, game_over and close_room: the result is announced only after the board
+  that produced it, and the terminal state_update carries current_turn: null.
+
+Code review fixes: the move flow no longer grants seats, and a deferred seat
+release can no longer outrun a reconnect and wipe the seat it just claimed.
+
+Tests: 310 passing. mypy --strict clean.
+
 Version 01.03.00 (2026-08-03)
 ---------------------------
 Roadmap phase v01.03 -- Match, seats & lobby REST.
