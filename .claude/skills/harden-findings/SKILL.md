@@ -77,8 +77,10 @@ landing isn't possible.
 ### Step 2.5: Emit tracking events
 
 `--emitter skill:harden-findings --scope phase=..,version=..`: on entry → `harden.start`; each landed
-fix → `harden.finding.fixed` (`finding`, `sha`); each escape-hatch hold → `harden.finding.held`
-(`finding`, `reason`). When an orchestrator skips the sweep it emits `harden.skipped` itself.
+fix → `harden.finding.fixed` (`finding`, `sha`, **plus `pytest` with the full-suite counts after the
+fix** — a hardening fix changes the suite, and `tests_passing` otherwise stays frozen at whatever the
+last issue reported); each escape-hatch hold → `harden.finding.held` (`finding`, `reason`). When an
+orchestrator skips the sweep it emits `harden.skipped` itself.
 
 Which sweep closed a finding is the point: if hardening keeps fixing HIGH findings that review
 deferred, the fix-now/defer classification is miscalibrated — a fact about the skills.

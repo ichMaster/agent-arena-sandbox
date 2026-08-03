@@ -327,9 +327,19 @@ class _Accumulator:
         issue = str(s.get("issue"))
         attempt = int(d.get("attempt", 1) or 1)
         self.issue_attempts[issue] = max(self.issue_attempts.get(issue, 0), attempt)
+        self._record_tests(d)
+
+    def _record_tests(self, d: Evt) -> None:
+        """Adopt the newest reported suite size, whatever it is.
+
+        Deliberately *latest*, not the running maximum. The panel answers "how big is
+        the suite now"; a high-water mark would keep reporting a count the repo no
+        longer has the moment tests are consolidated or removed, and would never
+        recover. Every emitter is expected to report a full-suite run.
+        """
         passed = (d.get("pytest") or {}).get("passed")
-        if isinstance(passed, int):
-            self.tests_passing = max(self.tests_passing, passed)
+        if isinstance(passed, int) and not isinstance(passed, bool):
+            self.tests_passing = passed
 
     def _on_issue_end(self, e: Evt, s: Evt, d: Evt, ts: str) -> None:
         self.done_points += self.issue_points.get(str(s.get("issue")), 3)
@@ -346,10 +356,15 @@ class _Accumulator:
 
     def _on_finding_fixed(self, e: Evt, s: Evt, d: Evt, ts: str) -> None:
         self.commits += 1
+        # A review fix changes the suite too. Without this the count stayed frozen at
+        # whatever the last issue reported, so the panel disagreed with the repo from
+        # the first fix onward.
+        self._record_tests(d)
         self._finding(s, d, outcome="fixed")
 
     def _on_harden_finding_fixed(self, e: Evt, s: Evt, d: Evt, ts: str) -> None:
         self.commits += 1
+        self._record_tests(d)
         self._finding(s, d, outcome="hardened")
 
     def _on_harden_finding_held(self, e: Evt, s: Evt, d: Evt, ts: str) -> None:

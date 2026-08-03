@@ -429,3 +429,74 @@ def test_run_id_is_read_from_the_envelope() -> None:
     every other consumer.
     """
     assert _reduce("clean-run").run_id == gen_log.RUN_ID
+
+
+# ── tests_passing must track the repo, not a high-water mark ─────────────────
+
+
+def _tests_line(etype: str, passed: int, **extra: Any) -> str:
+    scope = {"phase": "v01", "version": "v01.01"}
+    if etype == "issue.validate.end":
+        scope = {**scope, "step": "execute-issues", "issue": "ARENA-001"}
+    return json.dumps(
+        {
+            "v": 1,
+            "ts": "2026-08-03T14:40:00.000Z",
+            "run_id": gen_log.RUN_ID,
+            "type": etype,
+            "emitter": "skill:review-and-fix-issues",
+            "scope": scope,
+            "status": "ok",
+            "data": {"pytest": {"passed": passed, "failed": 0}, **extra},
+        }
+    )
+
+
+def test_a_review_fix_updates_the_suite_size() -> None:
+    """A fix adds regression tests; the panel must not stay frozen on the last issue."""
+    base = gen_log.preset("clean-run").splitlines()
+    before = reduce_mod.reduce(base, NOW).metrics["tests_passing"]
+    after = reduce_mod.reduce(
+        base + [_tests_line("finding.fixed", before + 4, finding="f1", sha="abc1234")], NOW
+    ).metrics["tests_passing"]
+    assert after == before + 4
+
+
+def test_a_hardening_fix_updates_the_suite_size() -> None:
+    base = gen_log.preset("clean-run").splitlines()
+    before = reduce_mod.reduce(base, NOW).metrics["tests_passing"]
+    after = reduce_mod.reduce(
+        base + [_tests_line("harden.finding.fixed", before + 7, finding="f1", sha="abc1234")],
+        NOW,
+    ).metrics["tests_passing"]
+    assert after == before + 7
+
+
+def test_the_suite_size_can_go_down() -> None:
+    """It reports the suite now, not the largest it ever was.
+
+    A running maximum would keep reporting a count the repo no longer has the moment
+    tests are consolidated, and would never recover.
+    """
+    base = gen_log.preset("clean-run").splitlines()
+    before = reduce_mod.reduce(base, NOW).metrics["tests_passing"]
+    assert before > 5
+    after = reduce_mod.reduce(
+        base + [_tests_line("finding.fixed", 5, finding="f1", sha="abc1234")], NOW
+    ).metrics["tests_passing"]
+    assert after == 5
+
+
+def test_a_fix_without_counts_leaves_the_suite_size_alone() -> None:
+    """An emitter that omits pytest data must not zero the panel."""
+    base = gen_log.preset("clean-run").splitlines()
+    before = reduce_mod.reduce(base, NOW).metrics["tests_passing"]
+    line = json.dumps(
+        {
+            "v": 1, "ts": "2026-08-03T14:40:00.000Z", "run_id": gen_log.RUN_ID,
+            "type": "finding.fixed", "emitter": "skill:review-and-fix-issues",
+            "scope": {"phase": "v01", "version": "v01.01"},
+            "status": "ok", "data": {"finding": "f1", "sha": "abc1234"},
+        }
+    )
+    assert reduce_mod.reduce(base + [line], NOW).metrics["tests_passing"] == before

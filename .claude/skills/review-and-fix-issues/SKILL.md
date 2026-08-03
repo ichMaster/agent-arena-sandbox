@@ -119,7 +119,13 @@ followed by `release-version`, but a run that stops here would otherwise strand 
 
 Per finding, via `--emitter skill:review-and-fix-issues --scope phase=..,version=..`: Step 2 →
 `finding.raised` (`finding`, `severity`, `title`) then `finding.classified` (`disposition`); Step 3 →
-`finding.fixed` (`sha`) for each fix-now item; deferred ones → `finding.deferred` (`home`).
+`finding.fixed` (`sha`, **plus `pytest` with the full-suite counts after the fix**) for each fix-now
+item; deferred ones → `finding.deferred` (`home`).
+
+**Carry the suite size on every `finding.fixed`** — `--data '{"finding":"…","sha":"…","pytest":
+{"passed":100,"failed":0}}'`. A fix changes the suite, and `tests_passing` is otherwise frozen at
+whatever the last issue reported, so the dashboard disagrees with the repo from the first fix onward.
+Report a **full-suite** run, never a single file's count.
 
 Counts must match this document's own summary table — the review doc and the log are two records of
 one review, and a discrepancy between them means one of the two is wrong.
