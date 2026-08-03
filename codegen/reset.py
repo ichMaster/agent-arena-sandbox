@@ -38,8 +38,14 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 
-#: Never deletable, whatever a log claims. The tool and the logs both live here.
-ALWAYS_KEEP = ("codegen",)
+#: Never deletable, whatever a log claims. This is the TOOLING, and it is the same in
+#: every product these skills are used in -- which is why naming it here does not
+#: reintroduce the portability problem that naming `server/` or `games/` would.
+#:
+#: `.claude` matters more than it looks. A fix to a skill is source, and a run commit
+#: that CREATES a skill file would otherwise put it in the deletion set. (An *edited*
+#: skill was always safe: `--diff-filter=A` lists additions only.)
+ALWAYS_KEEP = ("codegen", ".claude", ".git")
 
 #: Events whose ``data.sha`` names a commit this run produced.
 COMMIT_EVENTS = ("issue.commit", "finding.fixed", "harden.finding.fixed")
@@ -64,6 +70,7 @@ class Manifest:
     tags: list[str] = field(default_factory=list)
     missing_shas: list[str] = field(default_factory=list)
     files: list[str] = field(default_factory=list)
+    withheld: list[str] = field(default_factory=list)
     unaccounted: list[str] = field(default_factory=list)
 
 
@@ -128,7 +135,9 @@ def build_manifest(runs_root: Path, repo: Path | None = None) -> Manifest:
             if path not in files:
                 files.append(path)
 
-    manifest.files = [f for f in files if f.split("/", 1)[0] not in ALWAYS_KEEP]
+    candidates = [f for f in files if f.split("/", 1)[0] not in ALWAYS_KEEP]
+    manifest.files = [f for f in candidates if not looks_like_source(f)]
+    manifest.withheld = [f for f in candidates if looks_like_source(f)]
 
     tracked = set(_git("ls-files", repo=repo).splitlines())
     accounted = set(manifest.files)
@@ -143,6 +152,22 @@ def _looks_generated(path: str) -> bool:
     """Heuristic, used only to *report* leftovers -- never to delete them."""
     head = path.split("/", 1)[0]
     return head not in {".claude", ".github", "spec", "LICENSE"} and not head.endswith(".md")
+
+
+def looks_like_source(path: str) -> bool:
+    """Does this deletion candidate look like something a human wrote?
+
+    The second layer of the skills concern. ALWAYS_KEEP covers the tooling by name; this
+    covers the rest by shape, because a product's source directory is not called the same
+    thing everywhere. A candidate matching this is **withheld and reported**, never
+    deleted silently -- the run may legitimately have added it, but that is a decision
+    for a person, not a heuristic.
+    """
+    head, _, tail = path.partition("/")
+    if head == "spec" and not tail.startswith("implementation/"):
+        return True          # the specification itself; only implementation/ is per-run
+    # root docs
+    return "/" not in path and (path.endswith(".md") or path in {"LICENSE", ".gitignore"})
 
 
 @dataclass
@@ -180,6 +205,13 @@ class Plan:
                 f"claimed by the log but absent from git ({len(m.missing_shas)}) -- skipped:",
                 *(f"  ? {s}" for s in m.missing_shas[:8]), "",
             ]
+        if m.withheld:
+            lines += [
+                f"claimed by a run but LOOKS LIKE SOURCE ({len(m.withheld)}) -- WITHHELD:",
+                *(f"  ! {f}" for f in m.withheld[:10]),
+                "  delete these by hand if you are sure. A run adding source is unusual",
+                "  enough to be worth a human deciding.", "",
+            ]
         if m.unaccounted:
             lines += [
                 f"present but no run claims them ({len(m.unaccounted)}) -- LEFT ALONE:",
@@ -189,6 +221,7 @@ class Plan:
         lines += [
             "never touched:",
             "  codegen/          the tracker, and codegen/runs/ -- the logs are the product",
+            "  .claude/          the skills; a fix to one is source, not output",
             "  GitHub issues     they carry the issue-id counter; this never calls gh",
         ]
         return "\n".join(lines)

@@ -191,3 +191,94 @@ def test_no_logs_means_no_manifest_and_no_deletion(tmp_path: Path,
     plan = reset_mod.build_plan(tmp_path / "nope", force=True)
     assert plan.manifest.runs == [] and plan.manifest.files == []
     assert reset_mod.main(["--runs", str(tmp_path / "nope"), "--force", "--apply"]) == 1
+
+
+# ── skills and other source must survive a reset ─────────────────────────────
+
+
+def test_a_run_commit_that_EDITS_a_skill_leaves_it_alone(repo: Path) -> None:
+    """The common case: a skill was fixed while a run was in progress.
+
+    Safe by construction -- `--diff-filter=A` lists additions only, so an edit never
+    enters the deletion set. Pinned because it is the behaviour being relied on.
+    """
+    skill = repo / ".claude" / "skills" / "ship-phase"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text("# original\n")
+    _commit(repo, "the skill, before the run")
+
+    (skill / "SKILL.md").write_text("# original, now fixed\n")
+    (repo / "widget" / "another.py").write_text("# generated\n")
+    sha = _commit(repo, "a run commit that also fixed a skill")
+
+    log = repo / "codegen" / "runs" / "run-20260803-142012" / "events.jsonl"
+    with log.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps({
+            "v": 1, "ts": "2026-08-03T14:50:00.000Z", "run_id": "run-20260803-142012",
+            "type": "issue.commit", "emitter": "skill:execute-issues",
+            "scope": {}, "data": {"sha": sha, "files": [".claude/skills/ship-phase/SKILL.md"]},
+        }) + "\n")
+
+    plan = _plan(repo)
+    reset_mod.apply(plan, repo=repo)
+    assert (skill / "SKILL.md").read_text() == "# original, now fixed\n"
+
+
+def test_a_run_commit_that_CREATES_a_skill_file_does_not_delete_it(repo: Path) -> None:
+    """The hole this guard closes.
+
+    An added file under .claude/ WOULD have entered the deletion set -- a new skill,
+    written during a run, silently removed by the reset that followed.
+    """
+    skill = repo / ".claude" / "skills" / "brand-new"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text("# a skill written during the run\n")
+    (repo / "widget" / "more.py").write_text("# generated\n")
+    sha = _commit(repo, "a run commit that created a skill")
+
+    log = repo / "codegen" / "runs" / "run-20260803-142012" / "events.jsonl"
+    with log.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps({
+            "v": 1, "ts": "2026-08-03T14:55:00.000Z", "run_id": "run-20260803-142012",
+            "type": "issue.commit", "emitter": "skill:execute-issues",
+            "scope": {}, "data": {"sha": sha, "files": []},
+        }) + "\n")
+
+    plan = _plan(repo)
+    assert not any(f.startswith(".claude/") for f in plan.manifest.files)
+    reset_mod.apply(plan, repo=repo)
+    assert (skill / "SKILL.md").is_file(), "a skill created during a run was deleted"
+
+
+def test_source_shaped_additions_are_withheld_and_reported(repo: Path) -> None:
+    """Second layer: source is not always called `.claude`.
+
+    A spec document or a root README added by a run is withheld rather than deleted --
+    unusual enough that a person should decide, not a heuristic.
+    """
+    (repo / "spec").mkdir(exist_ok=True)
+    (repo / "spec" / "new_contract.md").write_text("# a spec written during the run\n")
+    (repo / "NOTES.md").write_text("# notes\n")
+    (repo / "spec" / "implementation").mkdir(parents=True, exist_ok=True)
+    (repo / "spec" / "implementation" / "v01.01-issues.md").write_text("# per-run\n")
+    sha = _commit(repo, "a run commit adding source-shaped files")
+
+    log = repo / "codegen" / "runs" / "run-20260803-142012" / "events.jsonl"
+    with log.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps({
+            "v": 1, "ts": "2026-08-03T15:00:00.000Z", "run_id": "run-20260803-142012",
+            "type": "issue.commit", "emitter": "skill:execute-issues",
+            "scope": {}, "data": {"sha": sha, "files": []},
+        }) + "\n")
+
+    plan = _plan(repo)
+    assert "spec/new_contract.md" in plan.manifest.withheld
+    assert "NOTES.md" in plan.manifest.withheld
+    # but per-run artefacts under spec/implementation/ ARE output and still go
+    assert "spec/implementation/v01.01-issues.md" in plan.manifest.files
+    assert "WITHHELD" in plan.render()
+
+    reset_mod.apply(plan, repo=repo)
+    assert (repo / "spec" / "new_contract.md").is_file()
+    assert (repo / "NOTES.md").is_file()
+    assert not (repo / "spec" / "implementation" / "v01.01-issues.md").exists()

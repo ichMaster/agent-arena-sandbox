@@ -71,6 +71,7 @@ now starts from a clean tree.
 | | Why |
 |---|---|
 | **`codegen/`** | the tracker — and `codegen/runs/`, where the logs live. **The logs are the product of the run**; deleting them destroys exactly what the generation was performed to produce. Enforced in code, not by configuration. |
+| **`.claude/`** | **the skills.** A fix to a skill is *source*, not output. An edited skill was always safe — `--diff-filter=A` lists additions only — but a skill file **created** during a run would otherwise have entered the deletion set. Naming this here does not reintroduce the portability problem: `codegen/` and `.claude/` are the *tooling*, identical in every product, unlike `server/` or `games/`. |
 | **GitHub issues** | they carry the issue-id counter. `generate-issues` resolves the next id from `max(GitHub, local) + 1`, so wiping them restarts numbering at 001 and collides with everything already shipped. This skill never calls `gh`. |
 | **Anything unclaimed** | reported, never removed. |
 
@@ -83,5 +84,9 @@ now starts from a clean tree.
 - **Never call `gh`.** Not to close issues, not to delete them.
 - **Never edit the log to make a reset tidier.** The log is evidence; if it disagrees
   with the tree, that disagreement is the finding.
-- **No hardcoded paths.** If you find yourself typing a directory name into this skill,
+- **Source-shaped additions are withheld, not deleted.** Anything a run added that looks
+  like source — a `spec/` document outside `implementation/`, a root `.md`, `LICENSE` —
+  is reported and left in place. A run adding source is unusual enough that a person
+  should decide, not a heuristic. Delete them by hand if you are sure.
+- **No hardcoded paths** *for output*. If you find yourself typing a directory name into this skill,
   the mechanism has been broken — the whole point is that it works unchanged elsewhere.
