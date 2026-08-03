@@ -13,12 +13,15 @@ import re
 import shutil
 import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from tests import gen_log
 from tracker import paths
+from tracker.reduce import reduce
 
 fastapi = pytest.importorskip("fastapi", reason="dashboard deps are optional (requirements.txt)")
 from fastapi.testclient import TestClient  # noqa: E402
@@ -323,3 +326,119 @@ def test_a_missing_snapshot_reads_as_stale(seeded: str) -> None:
 
     assert state_mod.is_stale(seeded)
     assert state_mod.read(seeded) is None
+
+
+# ── panel geometry: the charts must survive a run wider than the mock ────────
+#
+# Every fault these guard against reached a real screen. The prototype's mock had four
+# versions and the fixtures had two, so panels that divided a FIXED height by their row
+# count, and axes with maxima copied from that mock, were correct on every test that
+# existed. A ten-version run gave the bars a negative height (they vanished, and the
+# labels landed on top of each other) and sent the suite series far above its own card,
+# where -- SVG does not clip by default -- it painted over the panel above.
+
+RENDERER = Path(__file__).resolve().parent / "render_panels.js"
+
+
+def _render(state: dict[str, Any]) -> dict[str, Any]:
+    """Run the real app.js against a state object and report where the ink landed."""
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node unavailable")
+    result = subprocess.run(
+        [node, str(RENDERER)], input=json.dumps(state),
+        capture_output=True, text=True, timeout=60,
+    )
+    assert result.returncode == 0, result.stderr
+    report: dict[str, Any] = json.loads(result.stdout)
+    return report
+
+
+def _panels(report: dict[str, Any]) -> dict[str, Any]:
+    """Just the charts. Underscore keys are whole-page answers, not panels."""
+    return {k: v for k, v in report.items() if not k.startswith("_")}
+
+
+@pytest.fixture
+def wide_state() -> dict[str, Any]:
+    """Ten versions across three phases — the real validation workload's shape."""
+    lines = gen_log.preset("full-roadmap").splitlines()
+    state = reduce(lines, datetime(2026, 8, 3, 18, 0, tzinfo=UTC))
+    state.run_id = "run-20260803-120000"
+    return state.as_dict()
+
+
+def test_no_panel_draws_outside_its_own_viewbox(wide_state: dict[str, Any]) -> None:
+    """The overflow that put one chart's series on top of another chart."""
+    for panel, r in _panels(_render(wide_state)).items():
+        assert r["rendered"], f"{panel} did not render: {r.get('html')}"
+        assert r["min_y"] >= -0.5, f"{panel} draws above its box at y={r['min_y']}"
+        assert r["max_y"] <= r["height"] + 0.5, (
+            f"{panel} draws below its box: {r['max_y']} > {r['height']}"
+        )
+
+
+def test_every_bar_has_a_positive_height(wide_state: dict[str, Any]) -> None:
+    """Ten rows in a height laid out for four made bars negative — invisible, silently."""
+    for panel, r in _panels(_render(wide_state)).items():
+        bad = [h for h in r["bar_heights"] if h <= 0]
+        assert not bad, f"{panel} drew {len(bad)} bar(s) with height <= 0"
+
+
+def test_row_labels_do_not_collide(wide_state: dict[str, Any]) -> None:
+    """Horizontal panels: consecutive row labels need vertical room for their text."""
+    for panel, r in _panels(_render(wide_state)).items():
+        rows = r["label_rows"]
+        gaps = [round(b - a, 2) for a, b in zip(rows, rows[1:], strict=False)]
+        assert all(g >= 12 for g in gaps), f"{panel} row labels overlap: gaps {gaps}"
+
+
+def test_x_axis_category_labels_do_not_collide(wide_state: dict[str, Any]) -> None:
+    """Ten version names in a narrow card must rotate rather than overrun each other."""
+    for panel, r in _panels(_render(wide_state)).items():
+        labels = r["x_labels"]
+        if len(labels) < 2:
+            continue
+        pitch = min(b["x"] - a["x"] for a, b in zip(labels, labels[1:], strict=False))
+        # Rotated labels cannot collide with their neighbour; only upright ones can.
+        widest = max((len(lbl["text"]) * 6.2 for lbl in labels if not lbl["rotated"]),
+                     default=0.0)
+        assert widest <= pitch, (
+            f"{panel}: horizontal labels need {widest:.0f}px but the slot is {pitch:.0f}px"
+        )
+
+
+def test_a_clock_never_reads_sixty_seconds(wide_state: dict[str, Any]) -> None:
+    """`26:60` — minutes floored and seconds rounded independently split 1619.7s wrong.
+
+    A clock that can print :60 quietly discredits every other figure on the page.
+    """
+    bad = _render(wide_state)["_clock"]
+    assert bad == [], f"mmss() produced invalid times, e.g. {bad[:5]}"
+
+
+def test_the_suite_trajectory_is_per_version_not_one_repeated_number(
+    wide_state: dict[str, Any],
+) -> None:
+    """The panel drew a dead-flat line that looked like a measurement.
+
+    `tests_passing` is a single running figure. The adapter handed the same final value
+    to all ten versions, so "Tests passing, by version" was a straight line by
+    construction — it could not have shown anything else, whatever the run did.
+    """
+    sizes = [
+        v["data"]["tests_passing"]
+        for phase in wide_state["tree"]
+        for v in phase.get("children", [])
+        if "tests_passing" in v.get("data", {})
+    ]
+    assert len(sizes) == 10, f"expected a count per version, got {sizes}"
+    assert len(set(sizes)) > 1, "every version reported the same suite size"
+    assert sizes == sorted(sizes), f"the suite shrank across versions: {sizes}"
+
+    # ...and that the panel actually plots them. The reducer recording per-version
+    # counts is only half the fix: the adapter handed the panel one global figure, and
+    # a flat line drawn from real state is indistinguishable from a real flat result.
+    plotted = _render(wide_state)["c-suite"]["point_ys"]
+    assert len(plotted) == 10, f"expected 10 plotted points, got {len(plotted)}"
+    assert len(set(plotted)) > 1, "the suite series is flat — one value repeated"

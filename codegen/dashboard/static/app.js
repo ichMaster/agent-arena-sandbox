@@ -78,7 +78,8 @@ function versionsFromState(){
                 : v.status === 'running' ? 'run' : v.status === 'skip' ? 'todo' : 'run',
                 tag: (v.data && v.data.tag) || null,
                 steps: Object.keys(steps).length ? steps : null,
-                tests: STATE?.metrics?.tests_passing ?? null,
+                tests: (v.data && typeof v.data.tests_passing === 'number')
+                       ? v.data.tests_passing : null,
                 issues: (v.children || []).flatMap(c => c.children || []).length || 0,
                 find: reviewed ? find : null});
     }
@@ -166,7 +167,36 @@ const REPO = {branch:'-', head:'-', created:0, closed:0, commits:0};
 connect();
 
 const S=v=>`var(--series-${v})`;
-const mmss=s=>`${Math.floor(s/60)}:${String(Math.round(s%60)).padStart(2,'0')}`;
+/* Round the TOTAL, then split. Rounding minutes and seconds independently let
+   1619.7s render as "26:60" -- floor(26.99)=26 and round(59.7)=60. A clock that can
+   print :60 undermines every other number on the page. */
+const mmss=s=>{const t=Math.max(0,Math.round(s));return `${Math.floor(t/60)}:${String(t%60).padStart(2,'0')}`;};
+
+/* Axis maxima came from the prototype's mock data as constants. Real runs exceed them,
+   and an SVG does not clip by default -- the suite series left its card and painted
+   over the panel above it. Derive the ceiling from the data instead. */
+const niceMax=(v,floor)=>{const m=Math.max(v||0,floor||1);
+  const p=Math.pow(10,Math.floor(Math.log10(m))),r=m/p;
+  return (r<=1?1:r<=2?2:r<=2.5?2.5:r<=5?5:10)*p;};
+const ticks=(max,n)=>Array.from({length:n+1},(_,i)=>max*i/n);
+
+/* Row pitch, for the horizontal bar panels. They divided a FIXED height by the row
+   count, so ten versions where the prototype had four gave every bar a negative height
+   -- the bars vanished and the labels landed on top of each other. The chart grows with
+   its rows instead; the card scrolls if it must. */
+const PITCH=26, BARH=16;
+
+/* Category labels on an x-axis. Ten versions in a narrow card overran each other --
+   the same fixed-layout assumption as the bar heights, one axis over. Rotate as soon
+   as the slot is too narrow for the text; stay horizontal when there is room, because
+   upright labels are easier to read and most panels have it. */
+const xLabel=(text,cx,y,slot)=>{
+  const need=String(text).length*6.2+6;
+  return need<=slot
+    ? `<text class="ax xcat" x="${cx}" y="${y}" text-anchor="middle">${esc(text)}</text>`
+    : `<text class="ax xcat" x="${cx}" y="${y}" text-anchor="end"
+             transform="rotate(-40 ${cx} ${y})">${esc(text)}</text>`;
+};
 const W=v=>({S:1,M:3,L:5})[v.size];
 const el=(id)=>document.getElementById(id);
 const svg=(w,h)=>`<svg viewBox="0 0 ${w} ${h}" role="img">`;
@@ -329,11 +359,14 @@ function renderVel(){
     const is=ISSUES.filter(i=>i.v===v.id);
     return {id:v.id, mean:is.reduce((a,i)=>a+i.dur,0)/is.length, pts:is.map(i=>i.dur)};
   });
-  const W_=340,H=190,L=42,R=40,T=10,B=26, maxY=650;
-  const bw=Math.min(24,(W_-L-R)/rows.length-16);
+  if(!rows.length){el('c-vel').innerHTML='<p class="note">no issue has finished yet</p>';
+    el('tv-vel').innerHTML='';return;}
+  const W_=340,H=190,L=52,R=40,T=10,B=40;   // B leaves room for a rotated label
+  const maxY=niceMax(Math.max(...rows.flatMap(r=>[r.mean,...r.pts]))*1.1,60);
+  const bw=Math.max(4,Math.min(24,(W_-L-R)/rows.length-16));
   const y=v=>T+(1-v/maxY)*(H-T-B);
   let s=svg(W_,H);
-  [0,300,600].forEach(g=>{s+=`<line class="gridline" x1="${L}" x2="${W_-R}" y1="${y(g)}" y2="${y(g)}"/>
+  ticks(maxY,2).forEach(g=>{s+=`<line class="gridline" x1="${L}" x2="${W_-R}" y1="${y(g)}" y2="${y(g)}"/>
     <text class="ax" x="${L-6}" y="${y(g)+3.5}" text-anchor="end">${mmss(g)}</text>`;});
   s+=`<line class="axisline" x1="${L}" x2="${W_-R}" y1="${y(0)}" y2="${y(0)}"/>`;
   rows.forEach((r,i)=>{
@@ -341,7 +374,7 @@ function renderVel(){
     const h=y(0)-y(r.mean);
     s+=`<path class="mark" d="M${cx-bw/2},${y(0)} L${cx-bw/2},${y(r.mean)+4} q0,-4 4,-4 L${cx+bw/2-4},${y(r.mean)} q4,0 4,4 L${cx+bw/2},${y(0)} Z" fill="${S(1)}"/>`;
     r.pts.forEach(p=>{ s+=`<circle cx="${cx+bw/2+7}" cy="${y(p)}" r="2.5" fill="var(--text-muted)" opacity=".65"/>`; });
-    s+=`<text class="ax" x="${cx}" y="${H-8}" text-anchor="middle">${r.id}</text>`;
+    s+=xLabel(r.id,cx,H-10,(W_-L-R)/rows.length);
     s+=`<rect class="hit" x="${cx-bw/2-6}" y="${T}" width="${bw+24}" height="${H-T-B}" data-i="${i}"/>`;
   });
   s+='</svg>'; el('c-vel').innerHTML=s;
@@ -354,15 +387,16 @@ function renderVel(){
 /* ── 6 · where time went (horizontal stacked bar, 2px surface gaps) ─────── */
 function renderTime(){
   const rows=V.filter(v=>v.steps);
-  const W_=700,H=170,L=54,R=54,T=8,B=24;
-  const maxX=rows.reduce((m,v)=>Math.max(m,Object.values(v.steps).reduce((a,b)=>a+b,0)),0);
+  if(!rows.length){el('c-time').innerHTML='<p class="note">no version has finished a step yet</p>';return;}
+  const W_=700,L=54,R=54,T=8,B=24;
+  const H=T+B+rows.length*PITCH, bh=BARH;
+  const maxX=niceMax(rows.reduce((m,v)=>Math.max(m,Object.values(v.steps).reduce((a,b)=>a+b,0)),0),60);
   const sx=v=>(v/maxX)*(W_-L-R);
-  const bh=Math.min(24,(H-T-B)/rows.length-14);
   let s=svg(W_,H);
-  [0,600,1200,1800].forEach(g=>{s+=`<line class="gridline" x1="${L+sx(g)}" x2="${L+sx(g)}" y1="${T}" y2="${H-B}"/>
-    <text class="ax" x="${L+sx(g)}" y="${H-8}" text-anchor="middle">${g/60}m</text>`;});
+  ticks(maxX,3).forEach(g=>{s+=`<line class="gridline" x1="${L+sx(g)}" x2="${L+sx(g)}" y1="${T}" y2="${H-B}"/>
+    <text class="ax" x="${L+sx(g)}" y="${H-8}" text-anchor="middle">${Math.round(g/60)}m</text>`;});
   rows.forEach((v,i)=>{
-    const yy=T+i*((H-T-B)/rows.length)+((H-T-B)/rows.length-bh)/2;
+    const yy=T+i*PITCH+(PITCH-bh)/2;
     let cx=L, total=0;
     s+=`<text class="axl" x="${L-8}" y="${yy+bh/2+4}" text-anchor="end">${v.id}</text>`;
     STEPS.forEach(([k,label,slot],si)=>{
@@ -391,11 +425,14 @@ function renderTime(){
 
 /* ── 7 · failure surface (EMPHASIS: retried in accent, rest gray) ───────── */
 function renderFail(){
-  const W_=560,H=180,L=30,R=12,T=10,B=42, maxY=3;
+  if(!ISSUES.length){el('c-fail').innerHTML='<p class="note">no issue has finished yet</p>';
+    el('tv-fail').innerHTML='';return;}
+  const W_=560,H=180,L=30,R=12,T=10,B=42;
+  const maxY=Math.max(3,...ISSUES.map(i=>i.att));
   const y=v=>T+(1-v/maxY)*(H-T-B);
-  const bw=Math.min(24,(W_-L-R)/ISSUES.length-6);
+  const bw=Math.max(2,Math.min(24,(W_-L-R)/ISSUES.length-6));
   let s=svg(W_,H);
-  [1,2,3].forEach(g=>{s+=`<line class="gridline" x1="${L}" x2="${W_-R}" y1="${y(g)}" y2="${y(g)}"/>
+  Array.from({length:maxY},(_,k)=>k+1).forEach(g=>{s+=`<line class="gridline" x1="${L}" x2="${W_-R}" y1="${y(g)}" y2="${y(g)}"/>
     <text class="ax" x="${L-6}" y="${y(g)+3.5}" text-anchor="end">${g}</text>`;});
   s+=`<line class="axisline" x1="${L}" x2="${W_-R}" y1="${y(0)}" y2="${y(0)}"/>`;
   ISSUES.forEach((it,i)=>{
@@ -404,8 +441,8 @@ function renderFail(){
     s+=`<path class="mark" d="M${cx-bw/2},${y(0)} L${cx-bw/2},${yv+4} q0,-4 4,-4 L${cx+bw/2-4},${yv} q4,0 4,4 L${cx+bw/2},${y(0)} Z"
           fill="${hot?S(2):'var(--deemph)'}"/>`;
     if(hot) s+=`<text class="dlabel" x="${cx}" y="${yv-6}" text-anchor="middle">${it.att}</text>`;
-    s+=`<text class="ax" x="${cx}" y="${H-26}" text-anchor="middle"
-          transform="rotate(-45 ${cx} ${H-26})">${it.id.replace('ARENA-','')}</text>`;
+    s+=`<text class="ax xcat" x="${cx}" y="${H-26}" text-anchor="middle"
+          transform="rotate(-45 ${cx} ${H-26})">${esc(it.id.replace('ARENA-',''))}</text>`;
     s+=`<rect class="hit" x="${cx-bw/2-3}" y="${T}" width="${bw+6}" height="${H-T-B}" data-i="${i}"/>`;
   });
   s+=`<text class="ax" x="${L}" y="${H-4}">ARENA-###</text>`;
@@ -421,18 +458,21 @@ function renderFail(){
 /* ── 8 · suite trajectory (one series, no legend, NO second axis) ───────── */
 function renderSuite(){
   const pts=V.filter(v=>v.tests!=null).map((v,i)=>[i,v.tests,v.id]);
-  const W_=520,H=170,L=36,R=34,T=12,B=26, maxY=200;
+  if(!pts.length){el('c-suite').innerHTML='<p class="note">no version has recorded a suite size yet</p>';
+    el('tv-suite').innerHTML='';return;}
+  const W_=520,H=170,L=44,R=44,T=12,B=40;   // B leaves room for a rotated label
+  const maxY=niceMax(Math.max(...pts.map(p=>p[1]))*1.1,50);
   const x=i=>L+(i/(pts.length-1||1))*(W_-L-R), y=v=>T+(1-v/maxY)*(H-T-B);
   let s=svg(W_,H);
-  [0,50,100,150,200].forEach(g=>{s+=`<line class="gridline" x1="${L}" x2="${W_-R}" y1="${y(g)}" y2="${y(g)}"/>
-    <text class="ax" x="${L-6}" y="${y(g)+3.5}" text-anchor="end">${g}</text>`;});
+  ticks(maxY,4).forEach(g=>{s+=`<line class="gridline" x1="${L}" x2="${W_-R}" y1="${y(g)}" y2="${y(g)}"/>
+    <text class="ax" x="${L-6}" y="${y(g)+3.5}" text-anchor="end">${Math.round(g)}</text>`;});
   s+=`<line class="axisline" x1="${L}" x2="${W_-R}" y1="${y(0)}" y2="${y(0)}"/>`;
   s+=`<path d="M${x(0)},${y(0)} L${pts.map(p=>x(p[0])+','+y(p[1])).join(' L')} L${x(pts.length-1)},${y(0)} Z"
         fill="${S(1)}" opacity=".10"/>`;
   s+=`<path d="M${pts.map(p=>x(p[0])+','+y(p[1])).join(' L')}" fill="none" stroke="${S(1)}"
         stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
   pts.forEach(p=>{s+=`<circle cx="${x(p[0])}" cy="${y(p[1])}" r="4.5" fill="${S(1)}" stroke="var(--surface-1)" stroke-width="2"/>
-    <text class="ax" x="${x(p[0])}" y="${H-8}" text-anchor="middle">${p[2]}</text>`;});
+    ${xLabel(p[2],x(p[0]),H-10,(W_-L-R)/(pts.length-1||1))}`;});
   const lp=pts[pts.length-1];
   s+=`<text class="dlabel" x="${x(lp[0])+9}" y="${y(lp[1])+4}">${lp[1]}</text>`;
   pts.forEach((p,i)=>s+=`<rect class="hit" x="${x(p[0])-18}" y="${T}" width="36" height="${H-T-B}" data-i="${i}"/>`);
@@ -449,14 +489,17 @@ function renderQuality(){
   // review has not happened yet is not "clean" — rendering it as an empty bar would lie.
   const rows=V.filter(v=>v.find && v.steps && v.steps.review>0);
   const pend=V.filter(v=>v.steps && !v.steps.review).map(v=>v.id);
-  const W_=980,H=110,L=54,R=110,T=10,B=24, maxX=6;
+  if(!rows.length){el('c-q').innerHTML='<p class="note">no review has finished yet</p>';
+    el('l-q').innerHTML='';el('tv-q').innerHTML='';return;}
+  const W_=980,L=54,R=110,T=10,B=24;
+  const H=T+B+rows.length*PITCH, bh=BARH;
+  const maxX=niceMax(Math.max(...rows.map(v=>QSEG.reduce((a,[k])=>a+(v.find[k]||0),0))),2);
   const sx=v=>(v/maxX)*(W_-L-R);
-  const bh=Math.min(24,(H-T-B)/rows.length-12);
   let s=svg(W_,H);
-  [0,2,4,6].forEach(g=>{s+=`<line class="gridline" x1="${L+sx(g)}" x2="${L+sx(g)}" y1="${T}" y2="${H-B}"/>
-    <text class="ax" x="${L+sx(g)}" y="${H-8}" text-anchor="middle">${g}</text>`;});
+  ticks(maxX,3).forEach(g=>{s+=`<line class="gridline" x1="${L+sx(g)}" x2="${L+sx(g)}" y1="${T}" y2="${H-B}"/>
+    <text class="ax" x="${L+sx(g)}" y="${H-8}" text-anchor="middle">${Math.round(g)}</text>`;});
   rows.forEach((v,i)=>{
-    const yy=T+i*((H-T-B)/rows.length)+((H-T-B)/rows.length-bh)/2;
+    const yy=T+i*PITCH+(PITCH-bh)/2;
     let cx=L,total=0;
     s+=`<text class="axl" x="${L-8}" y="${yy+bh/2+4}" text-anchor="end">${v.id}</text>`;
     QSEG.forEach(([k,label,slot],si)=>{

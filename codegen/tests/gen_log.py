@@ -61,6 +61,11 @@ class Scenario:
     finish: bool = True
     abort_after: str | None = None
     harden: bool = True
+    #: Tests each issue adds to the suite. Fixed at 6, ten versions topped out under
+    #: 200 -- which is exactly where a chart axis had been hardcoded, so the fixture
+    #: could never reach the value that broke it. A fixture that cannot exceed the
+    #: constant it is meant to test is not testing it.
+    tests_per_issue: int = 6
     estimate: bool = True
 
 
@@ -187,7 +192,7 @@ def _emit_version(w: _Writer, scenario: Scenario, spec: VersionSpec, tests: int)
         w.tick(20)
         w.add("step.end", EMITTER_SHIP, status="ok", scope=scope_s)
 
-    tests = _emit_execute(w, spec, scope_v, issues, tests)
+    tests = _emit_execute(w, spec, scope_v, issues, tests, scenario.tests_per_issue)
     if spec.reviewed:
         _emit_review(w, spec, scope_v)
     if spec.released:
@@ -199,7 +204,8 @@ def _emit_version(w: _Writer, scenario: Scenario, spec: VersionSpec, tests: int)
 
 
 def _emit_execute(
-    w: _Writer, spec: VersionSpec, scope_v: dict[str, str], issues: list[Any], tests: int
+    w: _Writer, spec: VersionSpec, scope_v: dict[str, str], issues: list[Any], tests: int,
+    per_issue: int = 6,
 ) -> int:
     scope_s = {**scope_v, "step": "execute-issues"}
     w.tick(4)
@@ -238,7 +244,7 @@ def _emit_execute(
                 w.add("issue.reverted", EMITTER_EXEC, status="fail", scope=scope_i,
                       data={"attempt": attempt})
 
-        tests += 6
+        tests += per_issue
         w.tick(4)
         w.add("issue.commit", EMITTER_EXEC, status="ok", scope=scope_i,
               data={"sha": f"c{w.issue_number:06d}", "files": ["games/x.py"]})
@@ -342,6 +348,28 @@ PRESETS: dict[str, Scenario] = {
     "held-findings": Scenario(
         name="held-findings",
         versions=[_v("v01.01", issues=2, findings=(1, 1, 1))],
+    ),
+    # A run the size of the real validation workload: /ship-phase v03, ten versions
+    # across three phases. Every other preset is one or two versions -- the same shape
+    # as the dashboard prototype's mock data, which is precisely why a whole class of
+    # layout faults survived. Panels that divided a fixed height by their row count gave
+    # ten rows a NEGATIVE bar height, and axis maxima carried over from the mock were
+    # exceeded, so a series left its own card and painted over the panel above it.
+    # Nothing in a two-version fixture can catch either.
+    "full-roadmap": Scenario(
+        name="full-roadmap", command="/ship-phase v03", seed=3, tests_per_issue=14,
+        versions=[
+            _v("v01.01", issues=3, findings=(1, 0, 0)),
+            _v("v01.02", issues=4, retries={2: 2}, findings=(1, 1, 0)),
+            _v("v01.03", issues=3, findings=(2, 1, 0)),
+            _v("v01.04", issues=5, retries={1: 3}, findings=(2, 2, 1)),
+            _v("v02.01", issues=4, findings=(1, 2, 0)),
+            _v("v02.02", issues=3, findings=(0, 2, 0)),
+            _v("v02.03", issues=3, findings=(1, 1, 0)),
+            _v("v03.01", issues=4, findings=(2, 2, 0)),
+            _v("v03.02", issues=2, findings=(1, 1, 0)),
+            _v("v03.03", issues=2, findings=(1, 2, 0)),
+        ],
     ),
 }
 

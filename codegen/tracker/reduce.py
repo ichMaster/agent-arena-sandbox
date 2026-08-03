@@ -325,6 +325,15 @@ class _Accumulator:
 
     def _on_version_end(self, e: Evt, s: Evt, d: Evt, ts: str) -> None:
         self.released.add(str(s.get("version")))
+        # Freeze the suite size as this version left it. `tests_passing` is a single
+        # running figure -- correct for "how big is the suite now", useless for a
+        # trajectory, because every version would read the same final number. The
+        # dashboard's suite panel did exactly that and drew a dead-flat line that looked
+        # like a measurement. Nothing new has to be emitted: the count is already in the
+        # log, it just has to be stamped where a per-version reader can find it.
+        node = self.nodes.get(self._path(s))
+        if node is not None:
+            node.data["tests_passing"] = self.tests_passing
 
     def _on_version_skipped(self, e: Evt, s: Evt, d: Evt, ts: str) -> None:
         self.skipped.add(str(s.get("version")))

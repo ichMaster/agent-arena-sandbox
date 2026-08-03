@@ -79,7 +79,7 @@ reconnects with backoff — it never blanks. The indicator next to the title rea
 | **Velocity** | Mean time per issue, per version | Dots show the per-issue spread. A mean alone hides its retries — look at the dots before believing the line. |
 | **Where the time went** | Which of the five steps costs what | Steps are strictly gated, so this composition *is* the chronology; no Gantt needed. |
 | **Failure surface** | Which issues fought back | Emphasis, not eight hues: issues needing more than one attempt are highlighted, first-pass issues are de-emphasised. |
-| **Tests passing, by version** | Suite trajectory | One series. Suite *duration* is deliberately **not** on this chart — 0–250 tests against 0–8 s on a second axis would invent a correlation. |
+| **Tests passing, by version** | Suite trajectory | The suite size **as each version left it**, stamped at `version.end`. Suite *duration* is deliberately **not** on this chart — tests against seconds on a second axis would invent a correlation. |
 | **Code-review findings** | How many, and what closed them | Fixed now / hardened later / still deferred / held. **Review density** (findings ÷ issues shipped) is the comparable number; raw counts just track version size. |
 
 Every chart has a **Table** button — the same data as rows, which is also the accessible path.
@@ -110,6 +110,12 @@ print(d['run_id'],d['status']);print(d['metrics']);print(d['counts'])"
 
 `counts` is the one to watch: `torn` and `malformed` must both be `0`, and `quarantine` must
 be empty. Anything else means events were written that the schema does not accept.
+
+Charts size themselves to the data: axis maxima come from the values, and the horizontal
+panels grow with their row count. Nothing is laid out for a fixed number of versions — the
+`full-roadmap` fixture (ten versions, ~450 tests) exists so the tests exercise a real run's
+shape, and `tests/render_panels.js` renders every panel headlessly to assert no series
+escapes its card, no bar has zero height, and no label lands on its neighbour.
 
 ### Known gaps
 
