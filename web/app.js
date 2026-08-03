@@ -30,6 +30,11 @@ async function joinLobby(matchId, spectator) {
       spectator: spectator,
     }),
   });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    window.alert(`Could not join match: ${body.detail || response.statusText}`);
+    return null;
+  }
   const data = await response.json();
   return data.token;
 }
@@ -37,6 +42,7 @@ async function joinLobby(matchId, spectator) {
 async function hostMatch() {
   const matchId = await createMatch();
   const token = await joinLobby(matchId, false);
+  if (!token) return;
   connectWebSocket(matchId, token);
 }
 
@@ -44,6 +50,7 @@ async function joinMatch(spectator) {
   const matchId = window.prompt("Match ID:");
   if (!matchId) return;
   const token = await joinLobby(matchId, spectator);
+  if (!token) return;
   connectWebSocket(matchId, token);
 }
 

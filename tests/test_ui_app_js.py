@@ -64,3 +64,25 @@ def test_join_match_threads_spectator_parameter() -> None:
 def test_route_event_handles_joined_and_stores_symbol() -> None:
     js = _app_js()
     assert "mySymbol = payload.symbol" in js
+
+
+def test_join_lobby_checks_response_status_before_use() -> None:
+    """Regression test for code review #1 (v03.01): a failed join (e.g. an unknown
+    match id) must not silently proceed to a doomed WebSocket connection."""
+    js = _app_js()
+    match = re.search(r"async function joinLobby\([^)]*\)\s*\{(.*?)\n\}", js, re.DOTALL)
+    assert match, "joinLobby body not found"
+    body = match.group(1)
+    assert "response.ok" in body
+    assert "return null" in body
+
+
+def test_host_and_join_match_guard_against_a_null_token() -> None:
+    js = _app_js()
+    for fn_name in ("hostMatch", "joinMatch"):
+        match = re.search(
+            rf"async function {fn_name}\([^)]*\)\s*\{{(.*?)\n\}}", js, re.DOTALL
+        )
+        assert match, f"{fn_name} body not found"
+        body = match.group(1)
+        assert "if (!token) return;" in body
