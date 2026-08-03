@@ -107,6 +107,24 @@ def test_malformed_envelope_yields_error_and_keeps_the_socket_usable(client: Tes
         }
 
 
+def test_oversized_chat_message_rejected(client: TestClient) -> None:
+    """Regression test for code review #1 (v01.04): unbounded chat message length."""
+    match_id, token = _create_and_join(client, "Alice")
+
+    with client.websocket_connect(f"/ws/match/{match_id}?token={token}") as ws:
+        ws.receive_json()  # joined
+
+        ws.send_json({"action": "chat", "payload": {"message": "x" * 501}})
+        error = ws.receive_json()
+        assert error == {"event": "error", "payload": {"detail": "invalid chat payload"}}
+
+        # exactly at the limit is fine, and the socket is still usable.
+        ws.send_json({"action": "chat", "payload": {"message": "x" * 500}})
+        chat = ws.receive_json()
+        assert chat["event"] == "chat_message"
+        assert len(chat["payload"]["message"]) == 500
+
+
 def test_unknown_action_yields_error(client: TestClient) -> None:
     match_id, token = _create_and_join(client, "Alice")
 

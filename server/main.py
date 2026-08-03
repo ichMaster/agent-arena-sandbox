@@ -125,11 +125,18 @@ async def ws_match(websocket: WebSocket, match_id: str, token: str, repo: Reposi
             await repo.release_seat(match_id, token)
 
 
+_MAX_CHAT_MESSAGE_LENGTH = 500
+
+
 async def _handle_chat(
     websocket: WebSocket, repo: Repository, match_id: str, sender: str, payload: dict[str, object]
 ) -> None:
     message = payload.get("message")
-    if not isinstance(message, str) or not message:
+    if (
+        not isinstance(message, str)
+        or not message
+        or len(message) > _MAX_CHAT_MESSAGE_LENGTH
+    ):
         await connection_manager.send_to(
             websocket, {"event": "error", "payload": {"detail": "invalid chat payload"}}
         )
