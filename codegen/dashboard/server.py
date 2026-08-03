@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import os
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -32,6 +33,19 @@ STATIC = Path(__file__).resolve().parent / "static"
 #: debounces anyway (dashboard-specification §6.3), so polling beats a watcher here —
 #: and costs no third-party dependency.
 POLL_SECONDS = 0.4
+
+#: Send a frame at least this often, even when the log has not grown.
+#:
+#: Frames used to be sent ONLY on growth, and a real run is quiet for long stretches: in
+#: the v01–v03 run, 23 gaps ran over a minute and the longest was 26. With no frame, the
+#: header's elapsed clock stops — it is computed at reduce time — so the page sat
+#: motionless for 26 minutes while the pipeline was working and the socket was fine.
+#: A stopped clock beside a "live" indicator is not a slow dashboard, it is a wrong one.
+#:
+#: The cost is one reduction per interval per client: ~10 ms for a 1000-event log. A
+#: finished run needs no special case — its elapsed is measured to `ended`, not to now,
+#: so the clock stops on its own and the repeated frames are identical.
+HEARTBEAT_SECONDS = 5.0
 
 app = FastAPI(title="Codegen Tracker", version="1")
 
@@ -102,7 +116,13 @@ async def websocket(ws: WebSocket) -> None:
         run_id = latest_run_id()
         await ws.send_json({"kind": "snapshot", "state": current_state(run_id)})
 
-        last_size = -1
+        # Seed from the size the snapshot was built at, not -1. At -1 the first poll
+        # always fired, sending a duplicate of the snapshot a tick after it -- harmless
+        # in itself, but it also meant a test could receive that frame and believe the
+        # heartbeat worked when it did not.
+        events_now = paths.events_path(run_id) if run_id else None
+        last_size = events_now.stat().st_size if events_now and events_now.is_file() else 0
+        last_sent = time.monotonic()
         while True:
             await asyncio.sleep(POLL_SECONDS)
             run_id = latest_run_id()
@@ -110,9 +130,11 @@ async def websocket(ws: WebSocket) -> None:
                 continue
             events = paths.events_path(run_id)
             size = events.stat().st_size if events.is_file() else 0
-            if size == last_size:
+            due = time.monotonic() - last_sent >= HEARTBEAT_SECONDS
+            if size == last_size and not due:
                 continue
             last_size = size
+            last_sent = time.monotonic()
             await ws.send_json({"kind": "delta", "state": current_state(run_id)})
     except (WebSocketDisconnect, RuntimeError, asyncio.CancelledError):
         pass

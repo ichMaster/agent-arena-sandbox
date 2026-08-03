@@ -17,7 +17,7 @@ codegen/
 ├── hooks/        Claude Code hooks — the independent floor  (stdlib only)
 ├── dashboard/    FastAPI server + a no-build page on :8420
 ├── runs/         one directory per run — the logs ARE the product (gitignored)
-└── tests/        288 tests
+└── tests/        290 tests
 ```
 
 ---
@@ -61,10 +61,18 @@ log — by `tracker/reduce.py`. Nothing is sampled from the working tree. That i
 the dashboard and the repo are two independent records, so when they disagree, the
 disagreement is itself the finding. Do not "fix" the log to match the tree.
 
-The page opens a WebSocket to `/ws`, gets a full snapshot on connect, then a fresh snapshot
-whenever the log grows (polled every 0.4 s). On disconnect it **holds the last render** and
-reconnects with backoff — it never blanks. The indicator next to the title reads `live` or
-`reconnecting`.
+The page opens a WebSocket to `/ws`, gets a full snapshot on connect, then a fresh one
+whenever the log grows (polled every 0.4 s) **and at least every 5 seconds regardless**. The
+heartbeat is what keeps the elapsed clock moving: a real run is quiet for long stretches — in
+the v01–v03 run 23 gaps between events ran over a minute and the longest was 26 — and elapsed
+is computed at reduce time, so without a frame the page freezes while the pipeline works.
+
+So: on a busy stretch the numbers move within half a second of the event; when nothing is
+happening, the clock still ticks every 5 seconds. A finished run needs no special case — its
+elapsed is measured to `ended`, so it stops on its own.
+
+On disconnect the page **holds the last render** and reconnects with backoff — it never
+blanks. The indicator next to the title reads `live` or `reconnecting`.
 
 ### The panels, top to bottom
 

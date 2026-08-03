@@ -9,10 +9,12 @@ from __future__ import annotations
 
 import json
 import os
+import queue
 import re
 import shutil
 import subprocess
 import sys
+import threading
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -442,3 +444,55 @@ def test_the_suite_trajectory_is_per_version_not_one_repeated_number(
     plotted = _render(wide_state)["c-suite"]["point_ys"]
     assert len(plotted) == 10, f"expected 10 plotted points, got {len(plotted)}"
     assert len(set(plotted)) > 1, "the suite series is flat — one value repeated"
+
+
+# ── the clock must keep moving when the log is quiet ─────────────────────────
+
+
+def test_a_frame_arrives_even_when_the_log_does_not_grow(
+    seeded: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Frames used to be sent only on growth, and real runs go quiet for a long time.
+
+    In the v01–v03 run, 23 gaps between events ran over a minute and the longest was 26.
+    With no frame the header's elapsed clock stops — it is computed at reduce time — so
+    the page sat motionless for 26 minutes with the socket up and the pipeline working.
+
+    Read on a background thread with a deadline: without a heartbeat `receive_json`
+    blocks forever, and a test that hangs the suite is worse than no test at all.
+    """
+    monkeypatch.setattr(server, "HEARTBEAT_SECONDS", 0.05)
+    monkeypatch.setattr(server, "POLL_SECONDS", 0.01)
+    before = paths.events_path(seeded).stat().st_size
+    box: queue.Queue[Any] = queue.Queue()
+
+    def read_three() -> None:
+        try:
+            with TestClient(server.app) as client, client.websocket_connect("/ws") as ws:
+                # Three, so this cannot pass on a frame sent for some other reason.
+                box.put([ws.receive_json() for _ in range(3)])
+        except BaseException as exc:  # noqa: BLE001 - reported through the queue
+            box.put(exc)
+
+    threading.Thread(target=read_three, daemon=True).start()
+    try:
+        frames = box.get(timeout=10)
+    except queue.Empty:
+        pytest.fail("no frame arrived while the log was quiet — the heartbeat is gone")
+    assert not isinstance(frames, BaseException), frames
+
+    assert [f["kind"] for f in frames] == ["snapshot", "delta", "delta"]
+    assert frames[-1]["state"]["run_id"] == seeded
+    assert paths.events_path(seeded).stat().st_size == before, "the log must not have grown"
+
+
+def test_the_heartbeat_does_not_restart_a_finished_run_s_clock(seeded: str) -> None:
+    """A repeated frame for a done run must be identical, not a clock creeping upward.
+
+    elapsed is measured to `ended` when there is one, so this holds without a special
+    case in the loop — but only as long as that stays true.
+    """
+    first = server.current_state(seeded)
+    second = server.current_state(seeded)
+    assert first["status"] == "done"
+    assert first["elapsed_s"] == second["elapsed_s"]
