@@ -9,11 +9,26 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from games.tictactoe import PLAYERS
-from server.models import Match, Participant
+from games.interface import GameInterface
+from games.tictactoe import PLAYERS, TicTacToe
+from server.models import ChatMessage, Match, Move, Participant
 
 #: The seats a match has, in assignment order. X is handed out first.
 SEATS: tuple[str, ...] = PLAYERS
+
+
+def _as_move(raw: str) -> object:
+    """Return the stored payload in the shape the game expects.
+
+    Moves are persisted as text because the payload is opaque to transport, but
+    TicTacToe's is an ``int`` cell. Anything that is not an integer is handed back
+    unchanged and rejected by ``apply_move`` -- which never raises, so a corrupt row
+    degrades one move rather than the whole replay.
+    """
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return raw
 
 
 class Repository:
@@ -99,6 +114,67 @@ class Repository:
             return
         participant.symbol = None
         await self._session.commit()
+
+    # -- the move and chat logs --------------------------------------------
+
+    async def log_move(self, match_id: str, symbol: str, move: object) -> None:
+        """Append one move. The payload is stored as text and never interpreted here.
+
+        Only the game module reads a move (§4.1), so the Repository is deliberately
+        incurious about it -- that is what lets a future game use a different payload
+        without touching persistence.
+        """
+        self._session.add(
+            Move(match_id=match_id, player_symbol=symbol, move=str(move))
+        )
+        await self._session.commit()
+
+    async def log_chat(self, match_id: str, sender: str, message: str) -> None:
+        self._session.add(
+            ChatMessage(match_id=match_id, sender=sender, message=message)
+        )
+        await self._session.commit()
+
+    async def get_moves(self, match_id: str) -> list[Move]:
+        """The move log in insertion order -- never in whatever order rows come back."""
+        result = await self._session.execute(
+            select(Move).where(Move.match_id == match_id).order_by(Move.id)
+        )
+        return list(result.scalars().all())
+
+    async def get_chat(self, match_id: str) -> list[ChatMessage]:
+        result = await self._session.execute(
+            select(ChatMessage)
+            .where(ChatMessage.match_id == match_id)
+            .order_by(ChatMessage.id)
+        )
+        return list(result.scalars().all())
+
+    # -- reconstruction by replay (§5.1, §13) -------------------------------
+
+    async def reconstruct_game(self, match_id: str) -> GameInterface:
+        """Replay the move log through a fresh game -- state is never stored mutably.
+
+        This is why ``GameInterface`` needs no serialize/deserialize step: replaying
+        from an empty board is cheap (at most nine moves for TicTacToe) and the log is
+        already the source of truth. It also means the board survives a *restart*, not
+        merely a reconnect.
+        """
+        game = TicTacToe()
+        for entry in await self.get_moves(match_id):
+            game.apply_move(entry.player_symbol, _as_move(entry.move))
+        return game
+
+    async def current_turn(self, match_id: str) -> str | None:
+        """Whose turn it is, or ``None`` once the game is over.
+
+        Read straight off the reconstructed game rather than recomputed from parity:
+        ``TicTacToe.current_player`` already answers ``None`` once the game is over, so
+        the rule that §6.2 depends on -- ``current_turn`` is ``null`` on the
+        game-ending move -- lives in exactly one place.
+        """
+        game = await self.reconstruct_game(match_id)
+        return game.current_player if isinstance(game, TicTacToe) else None
 
     async def _taken_symbols(self, match_id: str) -> set[str]:
         result = await self._session.execute(
