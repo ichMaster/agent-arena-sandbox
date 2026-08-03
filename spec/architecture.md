@@ -257,7 +257,10 @@ seat of) any socket that raises mid-send — a dead client never blocks delivery
 
 Every `submit_move` is re-validated server-side regardless of client claims:
 
-1. `symbol = repo.assign_symbol(match_id, token)` — `None` → `error` ("no seat"/observer).
+1. `symbol = repo.seat_of(match_id, token)` — the seat this token **already holds**; `None` → `error`
+   ("no seat"/observer). The move flow *reads* the seat, it never assigns one: seats are claimed once
+   at WS connect (§6.2 `joined`), and assigning here would let the act of submitting a move grant a
+   seat to a client who had none — an authority check that changes what it is checking.
 2. reconstruct the game (`repo.reconstruct_game`); `symbol != current_turn` → `error` ("not your turn").
 3. `game.apply_move(symbol, move)` returns `False` → `error` ("invalid move").
 4. persist: `repo.log_move(...)`; if `game.is_game_over()` is now truthy, update the match row's
