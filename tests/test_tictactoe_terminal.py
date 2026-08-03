@@ -142,6 +142,44 @@ def test_a_finished_game_still_never_raises() -> None:
         assert game.apply_move("O", move) is False
 
 
+# -- nobody is to move once the game is over (code review #1) ---------------
+
+
+def test_current_player_is_none_after_a_win() -> None:
+    """§6.2: current_turn must be null on the game-ending move."""
+    game = TicTacToe()
+    _place(game, {0: "X", 3: "O", 1: "X", 4: "O", 2: "X"})
+    assert game.is_game_over() == "X"
+    assert game.current_player is None
+
+
+def test_current_player_is_none_after_a_win_on_the_final_cell() -> None:
+    game = TicTacToe()
+    _place(game, {1: "X", 2: "X", 3: "O", 4: "O", 5: "X", 6: "X", 7: "O", 8: "O", 0: "X"})
+    assert game.is_game_over() == "X"
+    assert game.current_player is None
+
+
+def test_current_player_is_none_after_a_draw() -> None:
+    game = TicTacToe()
+    _place(
+        game,
+        {0: "X", 1: "O", 2: "X", 3: "X", 4: "O", 5: "O", 6: "O", 7: "X", 8: "X"},
+    )
+    assert game.is_game_over() == DRAW
+    assert game.current_player is None
+
+
+def test_current_player_still_names_a_symbol_while_the_game_is_ongoing() -> None:
+    """The fix must not answer None too eagerly -- an ongoing game always has a mover."""
+    game = TicTacToe()
+    assert game.current_player == "X"
+    for index, cell in enumerate([0, 1, 2, 4, 3, 5, 7, 6]):
+        assert game.apply_move("XO"[index % 2], cell) is True
+        assert game.is_game_over() is None
+        assert game.current_player in {"X", "O"}
+
+
 def test_the_board_is_unchanged_by_a_post_game_move() -> None:
     game = TicTacToe()
     _place(game, {0: "X", 4: "X", 8: "X"})

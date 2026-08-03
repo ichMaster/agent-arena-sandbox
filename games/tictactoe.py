@@ -43,12 +43,20 @@ class TicTacToe(GameInterface):
         self._board: list[str | None] = [None] * BOARD_SIZE
 
     @property
-    def current_player(self) -> str:
-        """Whose turn it is, derived from move parity -- ``X`` on an empty board.
+    def current_player(self) -> str | None:
+        """Whose turn it is: ``X`` on an empty board, **``None`` once the game is over**.
 
-        Derived, never stored: the same rule lets the server recover whose turn it
+        Derived, never stored -- the same rule lets the server recover whose turn it
         is from the move log alone, with no mutable turn field to fall out of sync.
+
+        The ``None`` is the contract, not a convenience: architecture.md §6.2 requires
+        ``current_turn`` to be ``null`` on the game-ending move, so that no client
+        treats the terminal ``state_update`` as an invitation to act into a room that
+        is about to close. Answering it here means every caller satisfies §6.2 by
+        reading this value, rather than by each remembering the rule.
         """
+        if self.is_game_over() is not None:
+            return None
         played = sum(1 for cell in self._board if cell is not None)
         return PLAYERS[played % len(PLAYERS)]
 
