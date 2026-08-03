@@ -8,9 +8,11 @@ needs the tree it is watching would be deleted by the process it exists to obser
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -51,14 +53,71 @@ def test_the_dashboard_imports_nothing_from_the_generated_app() -> None:
     assert not offenders, offenders
 
 
-def test_it_serves_with_the_application_tree_absent(seeded: str) -> None:
-    for directory in ("server", "games", "agent", "web"):
-        assert not (paths.codegen_root().parent / directory).exists(), (
-            f"{directory}/ exists; this test is meant to run without it"
-        )
-    with TestClient(server.app) as client:
-        assert client.get("/").status_code == 200
-        assert client.get("/api/state").status_code == 200
+def test_it_serves_with_the_application_tree_absent(tmp_path: Path) -> None:
+    """Serve from a tree that genuinely has no application beside it.
+
+    This must *construct* the absence rather than assert it of the live repo. A
+    generation run creates ``server/``, ``games/``, ``agent/`` and ``web/`` -- that is
+    what a run is -- so a check on the real directory only passes *between* runs,
+    which is precisely when the coupling it guards against cannot bite. Asserting
+    the ambient state would therefore go quiet exactly when it mattered.
+
+    So: copy ``codegen/`` somewhere with no application siblings, seed a run inside
+    it, and serve from there in a subprocess -- a fresh interpreter, so the import is
+    real and ``codegen_root()`` resolves into the sandbox.
+    """
+    sandbox = tmp_path / "sandbox"
+    shutil.copytree(
+        paths.codegen_root(),
+        sandbox / "codegen",
+        ignore=shutil.ignore_patterns("__pycache__", "runs", "var", "tests", ".*_cache"),
+    )
+
+    runs = sandbox / "codegen" / "runs"
+    (runs / gen_log.RUN_ID).mkdir(parents=True)
+    (runs / gen_log.RUN_ID / "events.jsonl").write_text(
+        gen_log.preset("clean-run"), encoding="utf-8"
+    )
+    (runs / "current").write_text(gen_log.RUN_ID, encoding="utf-8")
+
+    present = [d for d in ("server", "games", "agent", "web") if (sandbox / d).exists()]
+    assert not present, f"the sandbox must have no application tree, found {present}"
+
+    env = {k: v for k, v in os.environ.items() if k != paths.RUNS_DIR_ENV}
+    result = subprocess.run(
+        [sys.executable, "-c", _SERVE_PROBE],
+        cwd=sandbox,
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=120,
+    )
+    assert result.returncode == 0, f"stdout={result.stdout}\nstderr={result.stderr}"
+    assert result.stdout.strip().endswith("SERVED"), result.stdout
+
+
+#: Run inside the sandbox: import the dashboard with no application tree in sight and
+#: prove it both starts and answers. Kept as a constant so the test above stays readable.
+_SERVE_PROBE = """
+import sys
+from pathlib import Path
+
+sys.path.insert(0, "codegen")
+
+from fastapi.testclient import TestClient
+from tracker import paths
+from dashboard import server
+
+root = paths.codegen_root()
+assert root == Path.cwd() / "codegen", root
+for directory in ("server", "games", "agent", "web"):
+    assert not (root.parent / directory).exists(), directory
+
+with TestClient(server.app) as client:
+    assert client.get("/").status_code == 200
+    assert client.get("/api/state").status_code == 200
+print("SERVED")
+"""
 
 
 def test_it_uses_its_own_port_never_the_apps() -> None:
