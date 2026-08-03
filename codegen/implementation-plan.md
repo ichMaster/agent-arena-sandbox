@@ -252,14 +252,14 @@ with the git context, refuse a second concurrent run.
 **Dependencies:** TRK-003
 
 **Acceptance criteria:**
-- [ ] `start()` creates the directory, the pointer, and a schema-valid `run.start`.
-- [ ] `pending()` returns a populated summary when an unterminated run exists, `None` otherwise.
-- [ ] `resume()` appends `run.resumed` with a correct `gap_s` and does **not** create a new run directory.
-- [ ] `supersede()` closes the old run with `run.aborted` and links the new one via `resumes`.
-- [ ] Elapsed excludes idle: a run resumed after a 1-hour gap reports `idle_s ≈ 3600` and an
+- [x] `start()` creates the directory, the pointer, and a schema-valid `run.start`.
+- [x] `pending()` returns a populated summary when an unterminated run exists, `None` otherwise.
+- [x] `resume()` appends `run.resumed` with a correct `gap_s` and does **not** create a new run directory.
+- [x] `supersede()` closes the old run with `run.aborted` and links the new one via `resumes`.
+- [x] Elapsed excludes idle: a run resumed after a 1-hour gap reports `idle_s ≈ 3600` and an
       `elapsed_s` that does not include it.
-- [ ] Starting when the previous run has `run.end` succeeds with no prompt.
-- [ ] Git context is populated on this repo; in a non-git temp dir the fields are `null` and no
+- [x] Starting when the previous run has `run.end` succeeds with no prompt.
+- [x] Git context is populated on this repo; in a non-git temp dir the fields are `null` and no
       exception escapes.
 
 ---
