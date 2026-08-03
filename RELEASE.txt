@@ -1,6 +1,27 @@
 AgentArena -- Release Notes
 ===========================
 
+Version 02.01.00 (2026-08-03)
+---------------------------
+Roadmap phase v02.01 -- LLMClient seam & the Anthropic Haiku client.
+
+- AgentResponse: one structured reply per turn (move + taunt), bounded. move is
+  deliberately unconstrained -- the server is the legality authority, and a
+  second weaker one in the agent would invite trusting it.
+- LLMClient: the vendor seam, generic over a schema. Structured output is forced
+  at the client, so the caller never parses raw text; a second vendor is a new
+  subclass, not a branch.
+- AnthropicHaikuClient: the only implementation, using messages.parse with
+  output_format so the SDK validates the reply into the schema. The model id is
+  a single constant, claude-haiku-4-5, confirmed against the live model list.
+- create_llm_client: config-driven selection; an unknown model_type names the
+  supported values rather than silently defaulting, and a missing key aborts
+  before any client is built. The key never appears in a repr or an error.
+
+The LLM is mocked in every test -- no paid call is made anywhere.
+
+Tests: 344 passing. mypy --strict clean.
+
 Version 01.04.00 (2026-08-03)
 ---------------------------
 Roadmap phase v01.04 -- WebSocket protocol & move authority. THE v01 GATE.
