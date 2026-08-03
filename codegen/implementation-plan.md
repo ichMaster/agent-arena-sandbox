@@ -70,8 +70,13 @@ These are settled here so no task has to re-litigate them.
 orchestrators worth keeping:
 
 1. **One task = one commit.** Never mix two TRK tasks; never start one whose dependencies are unmet.
-2. **Validate before committing** — `pytest codegen/tests`, `mypy codegen/`, `ruff check codegen/`, all
-   green. Never commit red.
+2. **Validate before committing** — `pytest codegen/tests`, `mypy --config-file codegen/pyproject.toml codegen/`,
+   `ruff check codegen/`, all green. Never commit red.
+
+   > **The `--config-file` is not optional.** mypy looks for config in the *current directory* only — it
+   > does not walk up from the files being checked. Plain `mypy codegen/` from the repo root therefore
+   > silently ignores `codegen/pyproject.toml`, runs non-strict, and reports success: a gate that is not
+   > a gate. Verified empirically. (`ruff` and `pytest` do walk up, so they need no flag.)
 3. **Walk the acceptance criteria explicitly** and tick each box in the same commit. An unticked box is
    an unfinished task, regardless of whether the code looks done.
 4. **Tests ship with the task**, not after it.
@@ -121,6 +126,9 @@ lint/type configuration. No runtime behaviour.
   distributable package and must not be picked up by the generated project's build.
 - Verify no path under `codegen/` is caught by the inherited `.gitignore` (architecture §4.1 names the
   `lib/`, `build/`, `dist/` trap).
+- `codegen/tracker/paths.py`: `runs_root() -> Path`, reading `CODEGEN_RUNS_DIR` and defaulting to
+  `codegen/runs/`. Lives here rather than in TRK-003 because the conftest guard below needs something
+  real to guard, and a guard against a hardcoded path is not a guard.
 - `codegen/tests/conftest.py`: an **autouse** fixture pointing `CODEGEN_RUNS_DIR` at `tmp_path`, plus a
   session-scoped guard that fails the suite if anything resolves the runs root to the real
   `codegen/runs/`. Without this, one forgetful test corrupts a live run (architecture §10).
@@ -128,12 +136,17 @@ lint/type configuration. No runtime behaviour.
 **Dependencies:** None
 
 **Acceptance criteria:**
-- [ ] `git check-ignore -v` returns nothing for every committed path under `codegen/`.
-- [ ] `python3 -m pytest codegen/tests` runs and collects 0 tests without error.
-- [ ] `mypy codegen/` and `ruff check codegen/` both pass on the empty tree.
-- [ ] Installing `codegen/requirements.txt` is **not** required for `pytest codegen/tests` to run.
-- [ ] A test that writes an event leaves `codegen/runs/` untouched; the guard fails a deliberately
-      mis-pointed test.
+- [x] `git check-ignore -v` returns nothing for every committed path under `codegen/`.
+- [x] `python3 -m pytest codegen/tests` runs and collects 0 tests without error.
+- [x] `mypy --config-file codegen/pyproject.toml codegen/` and `ruff check codegen/` both pass on the empty tree.
+- [x] Strict mode is **actually active**: an untyped function under `codegen/` makes that mypy command
+      fail. (Plain `mypy codegen/` would pass it — see the working-discipline note.)
+- [x] Installing `codegen/requirements.txt` is **not** required for `pytest codegen/tests` to run.
+- [x] `runs_root()` returns the `CODEGEN_RUNS_DIR` path when set, `codegen/runs/` when not.
+- [x] Under the autouse fixture, `runs_root()` resolves inside `tmp_path` — never the real directory.
+- [x] The session guard fails a deliberately mis-pointed test rather than letting it write to
+      `codegen/runs/`.
+- [x] `tracker/` and `hooks/` import **only** the stdlib — enforced by a parametrised test, not trusted.
 
 ---
 
@@ -734,7 +747,7 @@ stay representative instead of drifting toward whatever was convenient to invent
       complete, balanced log with no manual intervention.
 - [ ] The dashboard shows that run live, from first event to release tag, meeting every criterion in
       [dashboard-specification.md](dashboard-specification.md) §11.
-- [ ] `pytest codegen/tests` green; `mypy codegen/` and `ruff check codegen/` clean.
+- [ ] `pytest codegen/tests` green; `mypy --config-file codegen/pyproject.toml codegen/` and `ruff check codegen/` clean.
 - [ ] The reconciliation report shows ≥ 95 % skill compliance.
 - [ ] `rm -rf codegen/` leaves a working repo — nothing outside it depends on the tracker.
 - [ ] No secret appears anywhere in any log, verified by grepping a real run's events for the key

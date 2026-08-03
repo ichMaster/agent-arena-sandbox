@@ -434,7 +434,9 @@ separately by default and can stitch them on request.
 
 ## 10. Test strategy
 
-Tests live in **`codegen/tests/`** and run with `pytest`. They must not touch the network, must not
+Tests live in **`codegen/tests/`** and run with `pytest`. Type-check with
+`mypy --config-file codegen/pyproject.toml codegen/` — the flag is required, because mypy reads config
+from the current directory only and would otherwise ignore `codegen/pyproject.toml` and run non-strict. They must not touch the network, must not
 call a model, and must not depend on `server/`, `games/`, or `agent/` existing.
 
 > **Isolation is a hard requirement, not hygiene.** The emitter resolves the active run from
