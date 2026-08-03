@@ -19,6 +19,13 @@ def test_create_llm_client_fails_fast_on_missing_key() -> None:
         create_llm_client("haiku", api_key="", temperature=0.7)
 
 
+def test_create_llm_client_fails_fast_on_whitespace_only_key() -> None:
+    """Regression test for code review #1 (v02.01): a whitespace-only key is
+    functionally missing and must not bypass the fail-fast check."""
+    with pytest.raises(RuntimeError, match="ANTHROPIC_API_KEY"):
+        create_llm_client("haiku", api_key="   ", temperature=0.7)
+
+
 def test_create_llm_client_rejects_unknown_vendor() -> None:
     with pytest.raises(ValueError, match="unknown model_type"):
         create_llm_client("bogus-vendor", api_key="sk-whatever", temperature=0.7)

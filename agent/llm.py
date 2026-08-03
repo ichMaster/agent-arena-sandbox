@@ -58,7 +58,7 @@ class AnthropicHaikuClient(LLMClient):
 def create_llm_client(model_type: str, api_key: str, temperature: float) -> LLMClient:
     """Config-driven vendor selection, keyed off ``AgentProfile.model_type``."""
     if model_type == "haiku":
-        if not api_key:
+        if not api_key.strip():
             raise RuntimeError("ANTHROPIC_API_KEY is required to run a live agent")
         return AnthropicHaikuClient(api_key, temperature)
 
