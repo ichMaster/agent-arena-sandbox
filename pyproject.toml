@@ -16,6 +16,8 @@ dependencies = [
   "sqlalchemy[asyncio]>=2.0",
   "aiosqlite>=0.19",
   "pydantic>=2.0",
+  "fastapi>=0.110",
+  "uvicorn[standard]>=0.27",
 ]
 
 [project.optional-dependencies]
@@ -23,6 +25,7 @@ dev = [
   "pytest>=8.0",
   "pytest-asyncio>=0.23",
   "mypy>=1.8",
+  "httpx",
 ]
 
 # Explicit package list, deliberately NOT auto-discovery. This is a flat layout,
