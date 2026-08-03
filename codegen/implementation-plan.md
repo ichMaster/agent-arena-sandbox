@@ -3,7 +3,13 @@
 **Status:** plan. No task below is started.
 **Companions:** [ship-phase-tracking-vision.md](ship-phase-tracking-vision.md) (why · what the
 dashboard shows) · [architecture.md](architecture.md) (contracts · formats · test strategy) ·
-[dashboard/prototype.html](dashboard/prototype.html) (the target UI, already built).
+[dashboard-specification.md](dashboard-specification.md) (how the UI is built — tokens, components,
+DOM, rendering, a11y) · [dashboard/prototype.html](dashboard/prototype.html) (the reference
+implementation, already built and rendering in both themes).
+
+**Where each task's detail lives.** Tasks state *what* and *when*; the binding contract for any task is
+whichever companion owns it — `architecture.md` for TRK-001…018, `dashboard-specification.md` for
+TRK-019…022. A task's acceptance criteria are the checkable subset, not a replacement for the spec.
 
 **ID namespace: `TRK-###`.** Deliberately *not* `ARENA-###`, which belongs to the generated
 application and whose counter continues across regeneration runs. The two systems have separate
@@ -525,9 +531,13 @@ emit `run.aborted` with `reason: "session-stopped"`.
 
 **Description:** Serve the UI and stream events.
 
-**Implementation:**
-- FastAPI on **port 8420**. `GET /` → the static page; `GET /api/state` → current `state.json`;
-  `WS /ws` → snapshot on connect, then per-event deltas.
+**Implementation:** Transport contract is
+[dashboard-specification.md](dashboard-specification.md) §6.1–6.2 — implement to it, do not re-invent
+the frame shapes here.
+- FastAPI on **port 8420** (spec §6.1). `GET /` → the static page; `GET /api/state` → current
+  `state.json`; `WS /ws` → one `snapshot` frame on connect, then a `delta` frame per appended event.
+- Reconnect semantics per spec §6.2: the client re-requests a snapshot rather than resuming, so the
+  server needs no per-client cursor.
 - Tail `events.jsonl` by polling size + incremental read (no watchdog dependency).
 - Reads only `codegen/runs/`; writes only `codegen/var/` (vision §3 principle 6).
 - Imports nothing from `server/`, `games/`, `agent/`.
@@ -538,7 +548,8 @@ emit `run.aborted` with `reason: "session-stopped"`.
 - [ ] Starts and serves with the application tree **entirely absent** — its normal state between runs.
 - [ ] A client connecting mid-run receives a snapshot then deltas, and converges to the same state as
       one connected from the start.
-- [ ] Appending to the log pushes a frame in < 500 ms.
+- [ ] Appending to the log pushes a frame in < 500 ms (spec §9 budget).
+- [ ] Frame shapes match spec §6.1 exactly — `{kind:"snapshot"|"delta", state, event?}`.
 - [ ] An import check asserts no `server.`/`games.`/`agent.` import anywhere under `codegen/`.
 
 ---
@@ -547,10 +558,22 @@ emit `run.aborted` with `reason: "session-stopped"`.
 
 **Description:** Turn `prototype.html` into the live page — all nine panels, real data.
 
-**Implementation:** Split the prototype into `static/index.html`, `app.js`, `styles.css` (no build
-step). Replace the mock constants with the WS feed. Keep every rendering rule from vision §6.4:
-hold-previous-render on update, table-view twin per chart, one filter row, no dual axis, status as
-icon+label.
+> **[dashboard-specification.md](dashboard-specification.md) is the contract for this task.** Tokens
+> (§2.1), type and mark specs (§2.2–2.3), layout and breakpoints (§3), the nine components (§4), per-panel
+> construction (§5), data binding and update discipline (§6), client state (§7), accessibility (§8),
+> performance budget (§9). Its §11 is this task's acceptance criteria in full; the list below is the
+> checkable subset.
+
+**Implementation:**
+- Split the prototype into `static/index.html`, `app.js`, `styles.css` — no build step. Vendored assets,
+  if ever needed, go in `static/vendor/`; **never `lib/` or `dist/`** (spec §1, principle 2 — the inherited
+  `.gitignore` swallows those silently).
+- Replace the mock constants with the WS feed from TRK-019; every panel stays a pure
+  `render(state) → html` (spec §5).
+- Honour the update discipline in spec §6.3: ≤5 Hz debounce, hold previous render, and **never
+  re-render a panel containing the focused element**.
+- Preserve the two data-honesty rules in spec §5 — panel 9 excludes un-reviewed versions; panel 4 plots
+  the projection, not known-work. Both are correctness, not styling.
 
 **Dependencies:** TRK-019
 
@@ -562,6 +585,8 @@ icon+label.
 - [ ] Light and dark both render correctly; the theme toggle wins over the OS setting in both
       directions.
 - [ ] No external network requests (verified from a devtools trace).
+- [ ] `prefers-reduced-motion` disables the status pulse; focus rings are never removed (spec §8).
+- [ ] Every criterion in dashboard-specification.md §11 passes.
 
 ---
 
@@ -569,8 +594,10 @@ icon+label.
 
 **Description:** Stop a colour tweak silently breaking CVD safety.
 
-**Implementation:** A test that extracts the categorical hexes from `styles.css` and runs them through
-the palette validator for both modes, failing on any FAIL.
+**Implementation:** A test that extracts the categorical hexes from `styles.css` — the
+`--series-1…5` tokens defined in [dashboard-specification.md](dashboard-specification.md) §2.1 — and
+runs them through the palette validator for both modes, failing on any FAIL. The spec table and the
+shipped CSS must agree; a mismatch is itself a failure.
 
 **Dependencies:** TRK-020
 
@@ -578,6 +605,7 @@ the palette validator for both modes, failing on any FAIL.
 - [ ] Passes on the current palette in both modes.
 - [ ] Fails if any slot is edited to a non-conforming value.
 - [ ] Skips with a clear message if the validator is unavailable, rather than erroring.
+- [ ] The `--series-*` values in `styles.css` match the spec §2.1 table exactly.
 
 ---
 
@@ -587,9 +615,12 @@ the palette validator for both modes, failing on any FAIL.
 
 **Description:** One run is an anecdote; several are data (vision §6.3).
 
-**Implementation:** `codegen/runs/index.json` summarising each completed run. Add the comparison views:
-duration variance per version (small multiples), the version × area failure heatmap (single-hue
-sequential), and first-pass rate over runs.
+**Implementation:** `codegen/runs/index.json` summarising each completed run. Add the comparison views
+from vision §6.3: duration variance per version (small multiples), the version × area failure heatmap
+(single-hue sequential from the `--seq-*` ramp), and first-pass rate over runs. New panels obey
+[dashboard-specification.md](dashboard-specification.md) unchanged — same tokens, mark specs, tooltip,
+table-view twin and accessibility rules; extend §5's panel table rather than inventing a parallel
+style.
 
 **Dependencies:** TRK-020
 
@@ -605,7 +636,8 @@ sequential), and first-pass rate over runs.
 ## Definition of done for the whole plan
 
 - [ ] A real `/ship-phase` run produces a complete, balanced log with no manual intervention.
-- [ ] The dashboard shows that run live, from first event to release tag.
+- [ ] The dashboard shows that run live, from first event to release tag, meeting every criterion in
+      [dashboard-specification.md](dashboard-specification.md) §11.
 - [ ] `pytest codegen/tests` green; `mypy codegen/` and `ruff check codegen/` clean.
 - [ ] The reconciliation report shows ≥ 95 % skill compliance.
 - [ ] `rm -rf codegen/` leaves a working repo — nothing outside it depends on the tracker.
