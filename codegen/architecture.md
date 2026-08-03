@@ -52,6 +52,17 @@ strict rather than stylistic:
 Two codebases, two plans, two test suites, two lifecycles — and one pipeline, which touches only one
 of them.
 
+**No skill builds the tracker — not even a codegen-specific fork.** A fork was considered and rejected:
+the decomposition those skills exist to perform is already done (it is `implementation-plan.md`), so a
+fork would only re-implement `execute-issues-file` against different paths, and become another artefact
+to keep in sync. The tracker is written as ordinary development, following the working discipline
+stated in the plan.
+
+**The `TRK-###` namespace stays out of git and GitHub.** No GitHub issues are created for tracker
+tasks — `upload-issues` is for `ARENA-###` only — and commit subjects use conventional prefixes
+(`feat(tracker):`, `test(tracker):`) rather than a task id. `git log` therefore never mixes the two id
+systems, and the plan file's checkboxes are the record of progress.
+
 **The two test suites are not the same thing and never share a directory:**
 
 | | `tests/` (repo root) | `codegen/tests/` |

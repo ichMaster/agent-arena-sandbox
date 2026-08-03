@@ -28,7 +28,10 @@ These are settled here so no task has to re-litigate them.
 | **The dashboard runs on port 8420**, never 8000. | 8000 is the generated app's. Both may run at once. |
 | **Python ≥ 3.11**, matching the generated project's floor. | `tomllib`, `datetime.UTC`, and exception groups are all available. |
 | **`ruff` + `mypy --strict` over `codegen/`**, same bar as the app. | The tracker is real code and gets the repo's normal standard. |
-| **TRK tasks are implemented by ordinary development — never by `/ship-phase` or `/ship-solution`.** | Those build the application from `spec/`; this system observes them. Using them here would be circular (TRK-010–015 modify those very skills), would need inputs the tracker doesn't have (roadmap versions, `ARENA-###`), would produce outputs it doesn't want (`vXX.YY.00` releases), and would put the tracker's own construction inside the log it produces. Architecture §1.1. |
+| **TRK tasks are implemented by ordinary development — no skill at all.** | Not `/ship-phase`, not `/ship-solution`, and not a codegen-specific fork of them. Using the existing ones would be circular (TRK-010–015 modify those very skills), needs inputs the tracker lacks (roadmap versions, `ARENA-###`), and produces outputs it doesn't want (`vXX.YY.00` releases). A fork was considered and rejected: the decomposition those skills perform is **already done** — it is this file — so a fork would only re-implement `execute-issues-file` against different paths, and would be another artefact to keep in sync. Architecture §1.1. |
+| **No GitHub issues for TRK tasks.** | `upload-issues` is for `ARENA-###` only. This plan is the task list; duplicating it into GitHub would create a second source of truth and put two unrelated id systems in one tracker. |
+| **`TRK-###` never appears in a commit subject.** | Commit subjects use conventional prefixes — `feat(tracker):`, `test(tracker):`, `docs(codegen):`, `fix(dashboard):` — so `git log` never mixes the two id systems. The task id may appear in the commit *body* where it genuinely aids archaeology; the subject line stays clean. |
+| **Progress is tracked by ticking this file's checkboxes.** | Since ids are absent from git and GitHub, the acceptance-criteria boxes in each task are the record of what is done. Tick them in the same commit that satisfies them. |
 
 ---
 
@@ -62,6 +65,18 @@ These are settled here so no task has to re-litigate them.
 | 22 | TRK-022 | Run index + cross-run comparison | L | 7 | TRK-020 |
 
 **Size legend:** S = 1–2 d · M = 3–5 d · L = 5–8 d
+
+**Working discipline.** No skill enforces this, so it is stated instead — it is the part of the
+orchestrators worth keeping:
+
+1. **One task = one commit.** Never mix two TRK tasks; never start one whose dependencies are unmet.
+2. **Validate before committing** — `pytest codegen/tests`, `mypy codegen/`, `ruff check codegen/`, all
+   green. Never commit red.
+3. **Walk the acceptance criteria explicitly** and tick each box in the same commit. An unticked box is
+   an unfinished task, regardless of whether the code looks done.
+4. **Tests ship with the task**, not after it.
+5. If a task's scope turns out wrong, **correct this file first**, then implement — never let the code
+   and the plan diverge silently.
 
 ---
 
