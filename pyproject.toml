@@ -15,6 +15,7 @@ license = { file = "LICENSE" }
 dependencies = [
   "sqlalchemy[asyncio]>=2.0",
   "aiosqlite>=0.19",
+  "pydantic>=2.0",
 ]
 
 [project.optional-dependencies]
