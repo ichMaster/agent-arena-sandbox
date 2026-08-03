@@ -1,6 +1,24 @@
 AgentArena — Release Notes
 ===========================
 
+Version 03.03.00 (2026-08-04)
+------------------------------
+- Chat panel: renderChat/handleChatSubmit post and render chat messages,
+  styled self vs. other; wired into routeEvent's chat_message case and
+  init()'s chat-form submit listener (ARENA-068).
+- Observe reconciliation: verified the Join/Observe REST bodies are
+  genuinely distinct end-to-end and spectator joins yield symbol:null,
+  against the real running server, not just app.js's source (ARENA-069).
+- Observer role: chat suppressed for a null symbol; a real-server test
+  confirms an Observer receives live state_update events and that the
+  server independently refuses a spectator's submit_move — the UI's own
+  guard is not the only thing standing between a spectator and a move
+  (ARENA-070). This is the v03 release gate.
+- Code review #1: renderChat's self-detection compared sender against
+  mySymbol ("X"/"O"/null), but the server broadcasts chat_message.sender
+  as the participant's player_name — self-detection could never succeed.
+  Fixed to compare against myPlayerName instead.
+
 Version 03.02.00 (2026-08-04)
 ------------------------------
 - renderBoard: draws marks and toggles playable/disabled per cell,
