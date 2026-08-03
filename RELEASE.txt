@@ -1,6 +1,26 @@
 AgentArena — Release Notes
 ===========================
 
+Version 03.01.00 (2026-08-04)
+------------------------------
+- server/main.py: static mount at /ui (StaticFiles) with a
+  Cache-Control: no-store middleware scoped to /ui/* only.
+- web/index.html + styles.css: the full dark "arena" shell — app bar,
+  stage (turn banner, 9 disabled board cells, player-card
+  placeholders), chat panel — matching ui_prototype.html's design
+  tokens.
+- web/app.js: Host/Join/Observe call the REST lobby then open one
+  WebSocket; connection status flips to Connected on open;
+  setMatchIdDisplay shows the full, untruncated match id; routeEvent
+  dispatches one case per server event (only joined acts this phase).
+- Code review fix: joinLobby now checks the REST response status and
+  surfaces a clear error instead of silently opening a doomed
+  WebSocket on a bad match id.
+- 149 tests passing (excluding one separately-tracked, pre-existing
+  intermittent flake in the live-server integration test, deferred to
+  v05.02's dedicated live-server fixture), mypy --strict clean across
+  games/server/agent.
+
 Version 02.03.00 (2026-08-04) — v02 release gate
 ------------------------------
 - agent/agent.py: the CLI entrypoint — arg parsing, AgentSession,
