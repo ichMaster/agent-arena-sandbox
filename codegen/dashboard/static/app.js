@@ -145,6 +145,11 @@ function renderHeader(){
   }
   const elapsed = document.getElementById('h-elapsed');
   if (elapsed) elapsed.textContent = mmss(STATE.elapsed_s || 0);
+  // textContent, never innerHTML: the command and branch come from the log, and a log
+  // is data from a process this page does not control.
+  const sub = document.getElementById('h-sub');
+  if (sub) sub.textContent = [STATE.command, STATE.run_id, STATE.github?.branch]
+    .filter(Boolean).join(' · ');
 }
 
 /* Panel configuration -- not data. The step and outcome orders map to categorical
@@ -165,6 +170,11 @@ const mmss=s=>`${Math.floor(s/60)}:${String(Math.round(s%60)).padStart(2,'0')}`;
 const W=v=>({S:1,M:3,L:5})[v.size];
 const el=(id)=>document.getElementById(id);
 const svg=(w,h)=>`<svg viewBox="0 0 ${w} ${h}" role="img">`;
+/* The log is written by skills, hooks and a shell -- data, not markup. The tooltip
+   path already uses textContent for that reason; the panels build HTML strings, so
+   anything from the log is escaped on the way in. */
+const esc=v=>String(v).replace(/[&<>"']/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 /* ── tooltip: textContent only — labels are untrusted data ──────────────── */
 const tip=el('tip');
@@ -233,8 +243,10 @@ function renderKpis(){
 function renderTree(){
   const sc={ok:'s-ok',run:'s-run',todo:'s-skip',fail:'s-fail'};
   const word={ok:'done',run:'running',todo:'queued',fail:'failed'};
-  let h=`<div class="tnode"><span class="status s-run"><span class="dot"></span></span>
-        <span class="tname">run · ship-phase v01</span><span class="tdur">51:47</span></div>`;
+  const rs=STATE.status==='running'?'run':STATE.status==='done'?'ok':STATE.status==='aborted'?'fail':'todo';
+  let h=`<div class="tnode"><span class="status ${sc[rs]}"><span class="dot"></span></span>
+        <span class="tname">run · ${esc(STATE.command||'—')}</span>
+        <span class="tdur">${mmss(STATE.elapsed_s||0)}</span></div>`;
   V.forEach(v=>{
     const total=v.steps?Object.values(v.steps).reduce((a,b)=>a+b,0):null;
     h+=`<div class="tnode d1 ${v.status==='run'?'active':''}">

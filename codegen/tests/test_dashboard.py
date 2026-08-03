@@ -278,3 +278,48 @@ def test_dashboard_writes_only_under_codegen(seeded: str) -> None:
     assert "var_root()" in source
     assert "/tmp" not in source
     assert json.dumps(source).count("os.path.expanduser") == 0
+
+
+# ── the snapshot is a cache, and a cache that never invalidates is a frozen page ──
+
+
+def test_a_hand_rebuilt_snapshot_does_not_freeze_the_dashboard(seeded: str) -> None:
+    """The failure this guards: a live-looking page whose numbers never move.
+
+    Nothing in the pipeline writes `state.json`, so the dashboard normally reduces the
+    log every time. But `python3 -m tracker.state` creates one, and a reader that trusted
+    it blindly served that instant forever -- while the WebSocket kept pushing a frame on
+    every append, so the page advertised itself as live the whole time.
+    """
+    from tracker import state as state_mod
+
+    lines = gen_log.preset("clean-run").splitlines()
+    events = paths.events_path(seeded)
+    events.write_text("\n".join(lines[:10]) + "\n", encoding="utf-8")
+
+    state_mod.rebuild(seeded)  # the hand rebuild that used to poison every later read
+    with TestClient(server.app) as client:
+        assert client.get("/api/state").json()["counts"]["events"] == 10
+
+    events.write_text("\n".join(lines[:20]) + "\n", encoding="utf-8")
+    with TestClient(server.app) as client:
+        assert client.get("/api/state").json()["counts"]["events"] == 20, (
+            "the log grew and the dashboard kept serving the snapshot"
+        )
+
+
+def test_a_snapshot_newer_than_the_log_is_still_used(seeded: str) -> None:
+    """The fix must not throw the cache away entirely -- only invalidate it."""
+    from tracker import state as state_mod
+
+    state_mod.rebuild(seeded)
+    assert not state_mod.is_stale(seeded)
+    assert state_mod.read(seeded) is not None
+
+
+def test_a_missing_snapshot_reads_as_stale(seeded: str) -> None:
+    """Absent and stale deserve one answer: reduce the log, which is the source of truth."""
+    from tracker import state as state_mod
+
+    assert state_mod.is_stale(seeded)
+    assert state_mod.read(seeded) is None

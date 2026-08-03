@@ -38,9 +38,37 @@ def write(run_id: str, state: State) -> Path:
     return target
 
 
+def is_stale(run_id: str) -> bool:
+    """Whether the log has grown since the snapshot was written.
+
+    The snapshot is a cache and nothing invalidates it: no part of the pipeline writes
+    ``state.json``, so in a normal run the file never exists and the dashboard reduces
+    the log on every request. The moment anyone rebuilds one by hand, though, a reader
+    that trusted it blindly would serve that frozen instant forever — still pushing
+    WebSocket frames on every append, so the page *looks* live while its numbers never
+    move. A stuck dashboard that advertises itself as live is worse than no dashboard.
+
+    The log is append-only, so mtime is the whole signal. **A tie counts as stale:**
+    reducing the log is always the correct answer and the snapshot is only ever an
+    optimisation, so the cheap mistake is re-reducing once too often, not freezing.
+    """
+    snapshot = paths.state_path(run_id)
+    if not snapshot.is_file():
+        return True
+    events = paths.events_path(run_id)
+    if not events.is_file():
+        return False
+    return events.stat().st_mtime_ns >= snapshot.stat().st_mtime_ns
+
+
 def read(run_id: str) -> dict[str, Any] | None:
+    """The snapshot, or ``None`` when there isn't a usable one.
+
+    ``None`` also means *stale* — callers already fall back to reducing the log, which
+    is the source of truth, so a stale snapshot and a missing one deserve one answer.
+    """
     path = paths.state_path(run_id)
-    if not path.is_file():
+    if not path.is_file() or is_stale(run_id):
         return None
     try:
         with path.open(encoding="utf-8") as fh:

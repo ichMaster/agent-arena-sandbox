@@ -12,8 +12,9 @@
 
   <div class="topbar">
     <h1>Codegen Tracker</h1>
-    <span class="sub"><code>/ship-phase v01</code> · run-20260803-142012 · branch <code>codegen-tracking</code></span>
+    <span class="sub" id="h-sub"></span>
     <span class="spacer"></span>
+    <span class="status" id="conn"></span>
     <button class="btn" id="theme">Toggle theme</button>
   </div>
 
@@ -156,9 +157,10 @@
 
   <p id="panel-errors" style="color:var(--critical);font-size:12px"></p>
   <footer>
-    Prototype · mock data shaped to the event schema in
-    <code>codegen/ship-phase-tracking-vision.md</code> §4. Palette validated with
-    <code>validate_palette.js</code> (light + dark, all checks pass). No external requests, no build step.
+    Every figure above is reduced from <code>codegen/runs/&lt;run&gt;/events.jsonl</code> — the run's own
+    log — via <code>tracker/reduce.py</code>. Nothing here is sampled from the working tree, so the
+    dashboard and the repo can disagree, and that disagreement is the finding. The filter row is not
+    wired yet. No external requests, no build step.
   </footer>
 </div>
 </div>
