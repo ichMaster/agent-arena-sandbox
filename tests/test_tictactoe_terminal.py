@@ -53,3 +53,16 @@ def test_full_playthrough_to_win_via_apply_move() -> None:
     for player, move in [("X", 0), ("O", 3), ("X", 1), ("O", 4), ("X", 2)]:
         assert game.apply_move(player, move) is True
     assert game.is_game_over() == "X"
+
+
+def test_apply_move_rejected_after_game_over() -> None:
+    game = TicTacToe()
+    # X: 0, 1, 2 (top row); O: 3, 4 — X wins on move 5, board still has empty cells.
+    for player, move in [("X", 0), ("O", 3), ("X", 1), ("O", 4), ("X", 2)]:
+        game.apply_move(player, move)
+    assert game.is_game_over() == "X"
+    winning_board = list(game.board)
+
+    assert game.apply_move("O", 5) is False
+    assert game.board == winning_board
+    assert game.is_game_over() == "X"

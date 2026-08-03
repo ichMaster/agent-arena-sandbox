@@ -38,6 +38,8 @@ class TicTacToe(GameInterface):
         return [i for i, cell in enumerate(self.board) if cell is None]
 
     def apply_move(self, player: str, move: Any) -> bool:
+        if self.is_game_over() is not None:
+            return False
         if player != self.current_player:
             return False
         if not isinstance(move, int) or isinstance(move, bool):
