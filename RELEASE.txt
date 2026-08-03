@@ -1,6 +1,26 @@
 AgentArena — Release Notes
 ===========================
 
+Version 02.03.00 (2026-08-04) — v02 release gate
+------------------------------
+- agent/agent.py: the CLI entrypoint — arg parsing, AgentSession,
+  join_match over REST, the WS event loop (join, connect, dispatch,
+  act only on its own turn, memory recording without self-echo
+  duplication), decide_move (retry then random legal fallback),
+  line-buffered output, a direct-run shim.
+- Verified end-to-end against a real running server: a full game,
+  including a genuinely-exercised illegal-move retry, reaching
+  game_over with a clean process exit.
+- Code review fix: server/main.py's WS handler no longer logs a full
+  unhandled-exception traceback on every normal game completion
+  (close_room's own disconnect of the winning mover's socket was
+  previously propagating as an unhandled WebSocketDisconnect).
+- 137 tests passing, mypy --strict clean across games/server/agent.
+  No live model call anywhere in the default suite.
+- v02 — Agent Client (Haiku) — is now complete: the LLMClient seam,
+  persona/memory/prompt, and the full agent event loop playing real
+  games end-to-end.
+
 Version 02.02.00 (2026-08-04)
 ------------------------------
 - AgentProfile: name/model_type/temperature/system_prompt/memory_limit
