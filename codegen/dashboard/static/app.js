@@ -125,6 +125,19 @@ function reportFailures(f){
 }
 
 function renderHeader(){
+  const now = document.querySelector('.hero .now');
+  if (now){
+    const status = STATE.status === 'running' ? 'run'
+      : STATE.status === 'done' ? 'ok' : STATE.status === 'aborted' ? 'fail' : 'skip';
+    const word = STATE.status === 'running' ? 'running' : STATE.status;
+    now.textContent = STATE.current || (STATE.status === 'done' ? 'finished' : '—');
+    const chip = document.createElement('span');
+    chip.className = 'status s-' + status;
+    const dot = document.createElement('span'); dot.className = 'dot';
+    chip.appendChild(dot); chip.appendChild(document.createTextNode(' ' + word));
+    now.appendChild(document.createTextNode(' '));
+    now.appendChild(chip);
+  }
   const el = document.getElementById('h-eta');
   if (el){
     const eta = STATE.eta;
@@ -257,21 +270,26 @@ function renderTree(){
    widest at t=0, when the total is entirely inference, and narrows as versions land. */
 function renderBurn(){
   const LO=9, HI=21;                       // points per undecomposed version (3–7 issues × ~3)
-  // [elapsed_min, known_points, undecomposed_versions]
-  const TL=[[0,0,4],[2,11,3],[6,8,3],[11,5,3],[16,2,3],[22,0,3],
-            [24,18,2],[29,13,2],[34,9,2],[40,4,2],[46,0,2],[48,18,1],[52,12,1]];
+  // From STATE, not a constant: the burn-down is the only panel needing shape over TIME,
+  // so the reducer samples remaining work at every event that changes it.
+  const TL = (STATE.burndown || []).map(p => [p.elapsed_s/60, p.known_points, p.undecomposed]);
+  if (!TL.length){ el('c-burn').innerHTML = '<p class="note">no data yet</p>'; return; }
   const lo=p=>p[1]+p[2]*LO, hi=p=>p[1]+p[2]*HI, mid=p=>(lo(p)+hi(p))/2;
-  const W_=560,H=200,L=34,R=14,T=10,B=26, maxX=105, maxY=90;
+  const W_=560,H=200,L=34,R=14,T=10,B=26;
+  const hiOf = p => p[1] + p[2]*HI;
+  const maxY = Math.max(10, Math.ceil(Math.max(...TL.map(hiOf)) * 1.15 / 10) * 10);
+  const maxX = Math.max(10, Math.ceil(Math.max(...TL.map(p=>p[0])) * 1.6 / 10) * 10);
   const x=v=>L+(v/maxX)*(W_-L-R), y=v=>T+(1-v/maxY)*(H-T-B);
   let s=svg(W_,H);
-  [0,30,60,90].forEach(g=>{ s+=`<line class="gridline" x1="${L}" x2="${W_-R}" y1="${y(g)}" y2="${y(g)}"/>
+  const yTicks=[0, maxY/3, maxY*2/3, maxY].map(v=>Math.round(v));
+  yTicks.forEach(g=>{ s+=`<line class="gridline" x1="${L}" x2="${W_-R}" y1="${y(g)}" y2="${y(g)}"/>
       <text class="ax" x="${L-6}" y="${y(g)+3.5}" text-anchor="end">${g}</text>`; });
   s+=`<line class="axisline" x1="${L}" x2="${W_-R}" y1="${y(0)}" y2="${y(0)}"/>`;
-  [0,25,50,75,100].forEach(t=>s+=`<text class="ax" x="${x(t)}" y="${H-8}" text-anchor="middle">${t}m</text>`);
+  [0, maxX/4, maxX/2, maxX*3/4, maxX].map(v=>Math.round(v)).forEach(t=>s+=`<text class="ax" x="${x(t)}" y="${H-8}" text-anchor="middle">${t}m</text>`);
   const up=TL.map(p=>`${x(p[0]).toFixed(1)},${y(hi(p)).toFixed(1)}`).join(' L');
   const dn=TL.slice().reverse().map(p=>`${x(p[0]).toFixed(1)},${y(lo(p)).toFixed(1)}`).join(' L');
   s+=`<path d="M${up} L${dn} Z" fill="${S(1)}" opacity=".16"/>`;
-  s+=`<line x1="${x(0)}" y1="${y(mid(TL[0]))}" x2="${x(95)}" y2="${y(0)}"
+  s+=`<line x1="${x(0)}" y1="${y(mid(TL[0]))}" x2="${x(maxX*0.9)}" y2="${y(0)}"
         stroke="var(--text-muted)" stroke-width="2" stroke-dasharray="5 4" stroke-linecap="round"/>`;
   s+=`<path d="M${TL.map(p=>x(p[0]).toFixed(1)+','+y(mid(p)).toFixed(1)).join(' L')}"
         fill="none" stroke="${S(1)}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;

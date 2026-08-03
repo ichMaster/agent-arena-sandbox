@@ -1,8 +1,7 @@
 # Tracking system — implementation plan
 
-**Status:** implemented. All 24 tasks are done and ticked; 242 tests pass with `mypy --strict`
-and `ruff` clean. Two known gaps remain in the UI, recorded under *Known gaps* below rather than
-quietly left for someone to discover.
+**Status:** implemented. All 24 tasks done; 247 tests pass with `mypy --strict` and `ruff` clean,
+and the dashboard renders a real run end to end.
 **Companions:** [ship-phase-tracking-vision.md](ship-phase-tracking-vision.md) (why · what the
 dashboard shows) · [architecture.md](architecture.md) (contracts · formats · test strategy) ·
 [dashboard-specification.md](dashboard-specification.md) (how the UI is built — tokens, components,
@@ -721,17 +720,14 @@ style.
 
 ## Known gaps
 
-Everything below is built and tested. These two are real and are **not** ticked away:
+None. Both UI gaps recorded here earlier are closed:
 
-- **The burn-down panel still plots a hardcoded series.** Its shape, band and ideal line are correct
-  and the reducer produces every number it needs (`scope.known`, `est_low`/`est_high`,
-  `undecomposed`), but `app.js` has not been wired to read them — it renders the prototype's constants.
-  Small, mechanical, and visibly wrong on a live run: the curve will not match the numbers beside it.
-- **The run header's "NOW" line is prototype text.** Elapsed and ETA come from state; the
-  currently-executing node does not.
-
-Neither affects the tracker itself — the log, the reducer, the hooks and the API are complete. Both are
-`app.js` adapter work.
+- **The burn-down reads `STATE.burndown`.** It was hardcoded because it is the only panel needing shape
+  over *time*, and the reducer produced a final snapshot — there was nothing to adapt it from. The
+  reducer now samples remaining work at every event that changes it (`version.decomposed` adds,
+  `issue.end` burns), and the axes rescale to the data instead of the mock's fixed frame.
+- **The header's "now" line reads `state.current`**, the deepest still-running node, derived in the
+  reducer so the UI never walks the tree to answer "what is happening right now".
 
 ---
 

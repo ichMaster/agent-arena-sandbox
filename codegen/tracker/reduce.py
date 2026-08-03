@@ -83,6 +83,7 @@ class State:
     ended: str | None = None
     elapsed_s: float = 0.0
     idle_s: float = 0.0
+    current: str | None = None
     plan: list[str] = field(default_factory=list)
     tree: list[dict[str, Any]] = field(default_factory=list)
     metrics: dict[str, Any] = field(default_factory=dict)
@@ -91,6 +92,7 @@ class State:
     estimate: dict[str, Any] | None = None
     eta: dict[str, Any] | None = None
     findings: list[dict[str, Any]] = field(default_factory=list)
+    burndown: list[dict[str, Any]] = field(default_factory=list)
     quarantine: list[dict[str, Any]] = field(default_factory=list)
     counts: dict[str, int] = field(default_factory=dict)
 
@@ -104,6 +106,7 @@ class State:
             "ended": self.ended,
             "elapsed_s": round(self.elapsed_s, 3),
             "idle_s": round(self.idle_s, 3),
+            "current": self.current,
             "plan": self.plan,
             "tree": self.tree,
             "metrics": self.metrics,
@@ -112,6 +115,7 @@ class State:
             "estimate": self.estimate,
             "eta": self.eta,
             "findings": self.findings,
+            "burndown": self.burndown,
             "quarantine": self.quarantine,
             "counts": self.counts,
         }
@@ -190,6 +194,13 @@ class _Accumulator:
         self.commits = 0
         self.findings: dict[str, dict[str, Any]] = {}
         self.version_overheads: list[float] = []
+        # Burn-down is the one panel needing shape over TIME, not a final
+        # snapshot. Sampled at every event that changes remaining work.
+        self.burndown: list[dict[str, Any]] = []
+        self.issue_points: dict[str, int] = {}
+        self.total_points = 0
+        self.done_points = 0
+        self.plan: list[str] = []
         self.harden_durations: list[float] = []
 
     # ── event dispatch ───────────────────────────────────────────────────
@@ -262,6 +273,8 @@ class _Accumulator:
     def _on_run_start(self, e: Evt, s: Evt, d: Evt, ts: str) -> None:
         self.run_data = d
         self.started = ts
+        self.plan = list(d.get("plan") or [])
+        self._sample(ts)
 
     def _on_run_estimate(self, e: Evt, s: Evt, d: Evt, ts: str) -> None:
         self.estimate = d
@@ -277,22 +290,32 @@ class _Accumulator:
         self.status = "aborted"
         self.ended = ts
 
-    def _on_version_decomposed( self, e: Evt, s: Evt, d: Evt, ts: str) -> None:
-        self.decomposed[str(s.get("version"))] = list(d.get("issues") or [])
+    def _on_version_decomposed(self, e: Evt, s: Evt, d: Evt, ts: str) -> None:
+        issues = list(d.get("issues") or [])
+        self.decomposed[str(s.get("version"))] = issues
+        for issue in issues:
+            points = SIZE_POINTS.get(str(issue.get("size")), 3)
+            self.issue_points[str(issue.get("id"))] = points
+            self.total_points += points
+        self._sample(ts)   # scope just grew: the step UP the vision doc describes
 
     def _on_version_end(self, e: Evt, s: Evt, d: Evt, ts: str) -> None:
         self.released.add(str(s.get("version")))
 
-    def _on_version_skipped( self, e: Evt, s: Evt, d: Evt, ts: str) -> None:
+    def _on_version_skipped(self, e: Evt, s: Evt, d: Evt, ts: str) -> None:
         self.skipped.add(str(s.get("version")))
 
-    def _on_issue_validate_end( self, e: Evt, s: Evt, d: Evt, ts: str) -> None:
+    def _on_issue_validate_end(self, e: Evt, s: Evt, d: Evt, ts: str) -> None:
         issue = str(s.get("issue"))
         attempt = int(d.get("attempt", 1) or 1)
         self.issue_attempts[issue] = max(self.issue_attempts.get(issue, 0), attempt)
         passed = (d.get("pytest") or {}).get("passed")
         if isinstance(passed, int):
             self.tests_passing = max(self.tests_passing, passed)
+
+    def _on_issue_end(self, e: Evt, s: Evt, d: Evt, ts: str) -> None:
+        self.done_points += self.issue_points.get(str(s.get("issue")), 3)
+        self._sample(ts)
 
     def _on_issue_uploaded(self, e: Evt, s: Evt, d: Evt, ts: str) -> None:
         self.gh_created += 1
@@ -307,20 +330,20 @@ class _Accumulator:
         self.commits += 1
         self._finding(s, d, outcome="fixed")
 
-    def _on_harden_finding_fixed( self, e: Evt, s: Evt, d: Evt, ts: str) -> None:
+    def _on_harden_finding_fixed(self, e: Evt, s: Evt, d: Evt, ts: str) -> None:
         self.commits += 1
         self._finding(s, d, outcome="hardened")
 
-    def _on_harden_finding_held( self, e: Evt, s: Evt, d: Evt, ts: str) -> None:
+    def _on_harden_finding_held(self, e: Evt, s: Evt, d: Evt, ts: str) -> None:
         self._finding(s, d, outcome="held")
 
     def _on_finding_raised(self, e: Evt, s: Evt, d: Evt, ts: str) -> None:
         self._finding(s, d, severity=str(d.get("severity", "")), outcome="open")
 
-    def _on_finding_classified( self, e: Evt, s: Evt, d: Evt, ts: str) -> None:
+    def _on_finding_classified(self, e: Evt, s: Evt, d: Evt, ts: str) -> None:
         self._finding(s, d, disposition=str(d.get("disposition", "")))
 
-    def _on_finding_deferred( self, e: Evt, s: Evt, d: Evt, ts: str) -> None:
+    def _on_finding_deferred(self, e: Evt, s: Evt, d: Evt, ts: str) -> None:
         self._finding(s, d, outcome="deferred")
 
     def _finding(self, scope: Evt, data: Evt, **fields: Any) -> None:
@@ -331,6 +354,24 @@ class _Accumulator:
             fid, {"id": fid, "version": scope.get("version"), "severity": "", "outcome": "open"}
         )
         entry.update({k: v for k, v in fields.items() if v})
+
+    def _sample(self, ts: str) -> None:
+        """Record remaining work at this instant.
+
+        ``undecomposed`` is what makes the uncertainty band possible: at t=0 nothing is
+        decomposed and the whole total is inference, which is exactly what the band has
+        to show (vision §6.2).
+        """
+        start = parse_ts(self.started or "")
+        moment = parse_ts(ts)
+        if not start or not moment:
+            return
+        undecomposed = [v for v in self.plan if v not in self.decomposed and v not in self.skipped]
+        self.burndown.append({
+            "elapsed_s": max(0.0, (moment - start).total_seconds() - self.idle_s),
+            "known_points": max(0, self.total_points - self.done_points),
+            "undecomposed": len(undecomposed),
+        })
 
     # ── finalise ─────────────────────────────────────────────────────────
 
@@ -356,7 +397,15 @@ class _Accumulator:
             state.elapsed_s = max(0.0, (end_dt - start_dt).total_seconds() - self.idle_s)
 
         state.tree = [child.as_dict() for child in self.root.children]
+        # The deepest still-running node, for the header's "now" line. Derived here so
+        # the UI never has to walk the tree to answer "what is happening right now".
+        deepest = [
+            f"{node.id}" for path, node in sorted(self.nodes.items(), key=lambda kv: len(kv[0]))
+            if path and node.status == "running"
+        ]
+        state.current = " · ".join(deepest[-3:]) if deepest else None
         state.findings = sorted(self.findings.values(), key=lambda f: str(f["id"]))
+        state.burndown = self.burndown
         self._scope_and_eta(state)
         self._metrics(state)
         self._github(state)

@@ -16,6 +16,7 @@ import subprocess
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -300,3 +301,56 @@ def test_emitted_events_reduce_end_to_end(isolated_runs_dir: Path) -> None:
     assert state.status == "done"
     assert state.command == "/ship-phase v01"
     assert state.counts["malformed"] == 0
+
+
+# ── the burn-down series ─────────────────────────────────────────────────────
+
+
+def test_burndown_is_a_time_series_not_a_final_snapshot() -> None:
+    """The one panel needing shape over time; everything else reads current state."""
+    state = _reduce("clean-run")
+    assert len(state.burndown) >= 5
+    assert all({"elapsed_s", "known_points", "undecomposed"} <= set(p) for p in state.burndown)
+    assert [p["elapsed_s"] for p in state.burndown] == sorted(
+        p["elapsed_s"] for p in state.burndown
+    ), "samples must be chronological"
+
+
+def test_remaining_work_steps_UP_when_a_version_is_decomposed() -> None:
+    """Scope arriving is the signature the vision doc asks to be visible, not smoothed."""
+    points = [p["known_points"] for p in _reduce("clean-run").burndown]
+    assert any(b > a for a, b in zip(points, points[1:], strict=False)), (
+        "no step up: decomposition must add work to the series"
+    )
+
+
+def test_remaining_work_reaches_zero_on_a_completed_run() -> None:
+    assert _reduce("clean-run").burndown[-1]["known_points"] == 0
+
+
+def test_undecomposed_count_falls_to_zero_as_versions_decompose() -> None:
+    """It drives the uncertainty band, which must narrow to nothing."""
+    counts = [p["undecomposed"] for p in _reduce("clean-run").burndown]
+    assert counts[0] > 0 and counts[-1] == 0
+    assert counts == sorted(counts, reverse=True), "undecomposed must only ever fall"
+
+
+def test_issue_sizes_weight_the_series() -> None:
+    """Three S issues must not outrank one L (vision §6.2)."""
+    state = _reduce("retry-run")
+    sizes = [i["size"] for issues in _decomposed_issues(state) for i in [issues]]
+    expected_peak = sum(reduce_mod.SIZE_POINTS[s] for s in sizes)
+    peak = max(p["known_points"] for p in state.burndown)
+    assert peak == expected_peak, (peak, expected_peak, sizes)
+    assert peak != len(sizes), "points must differ from a raw count -- sizes carry weight"
+
+
+def _decomposed_issues(state: reduce_mod.State) -> list[dict[str, Any]]:
+    """Every issue the run decomposed, read back off the tree."""
+    out: list[dict[str, Any]] = []
+    for phase in state.tree:
+        for version in phase.get("children") or []:
+            for step in version.get("children") or []:
+                for issue in step.get("children") or []:
+                    out.append({"size": (issue.get("data") or {}).get("size", "M")})
+    return out
