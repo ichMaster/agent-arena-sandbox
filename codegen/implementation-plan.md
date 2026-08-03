@@ -561,7 +561,13 @@ finding; Step 3 → `finding.fixed`; deferred → `finding.deferred` with `home`
 - [x] Malformed/empty stdin → exit 0, no event, no stdout.
 - [x] A payload containing `ANTHROPIC_API_KEY=sk-ant-…` produces an event with no trace of the key.
 - [x] p95 runtime < 50 ms over 100 fixture invocations.
-- [x] `.claude/settings.json` contains **only** matchers and commands pointing into
+- [x] The registration ships as **`codegen/hooks/settings.hooks.json`**, a template to copy in
+      deliberately — **not** an enabled `.claude/settings.json`. A committed registration fires on
+      every tool call in every session for anyone who clones the repo, and a broken one *blocks*
+      those calls. It uses `$CLAUDE_PROJECT_DIR`, never a relative path: a relative path resolves
+      against the session's cwd and fails the moment a command has `cd`'d. Both facts were found
+      the hard way — the first registration broke the session that wrote it.
+- [x] It contains **only** matchers and commands pointing into
       `codegen/hooks/` — no logic, no paths outside `codegen/`. (A line-count cap was the original
       criterion; it measured formatting rather than the property that matters, and JSON at
       indent 2 exceeds it while satisfying the rule perfectly.)
@@ -623,12 +629,12 @@ the frame shapes here.
 **Dependencies:** TRK-009
 
 **Acceptance criteria:**
-- [ ] Starts and serves with the application tree **entirely absent** — its normal state between runs.
-- [ ] A client connecting mid-run receives a snapshot then deltas, and converges to the same state as
+- [x] Starts and serves with the application tree **entirely absent** — its normal state between runs.
+- [x] A client connecting mid-run receives a snapshot then deltas, and converges to the same state as
       one connected from the start.
-- [ ] Appending to the log pushes a frame in < 500 ms (spec §9 budget).
-- [ ] Frame shapes match spec §6.1 exactly — `{kind:"snapshot"|"delta", state, event?}`.
-- [ ] An import check asserts no `server.`/`games.`/`agent.` import anywhere under `codegen/`.
+- [x] Appending to the log pushes a frame in < 500 ms (spec §9 budget).
+- [x] Frame shapes match spec §6.1 exactly — `{kind:"snapshot"|"delta", state, event?}`.
+- [x] An import check asserts no `server.`/`games.`/`agent.` import anywhere under `codegen/`.
 
 ---
 
@@ -656,15 +662,15 @@ the frame shapes here.
 **Dependencies:** TRK-019
 
 **Acceptance criteria:**
-- [ ] All nine panels render from a real reduced run.
-- [ ] Live updates do not flash or shift layout (previous render held at reduced opacity).
-- [ ] Every chart has a working table view; every value is reachable without hovering.
-- [ ] Keyboard focus reaches every interactive mark and shows the same detail as hover.
-- [ ] Light and dark both render correctly; the theme toggle wins over the OS setting in both
+- [x] All nine panels render from a real reduced run.
+- [x] Live updates do not flash or shift layout (previous render held at reduced opacity).
+- [x] Every chart has a working table view; every value is reachable without hovering.
+- [x] Keyboard focus reaches every interactive mark and shows the same detail as hover.
+- [x] Light and dark both render correctly; the theme toggle wins over the OS setting in both
       directions.
-- [ ] No external network requests (verified from a devtools trace).
-- [ ] `prefers-reduced-motion` disables the status pulse; focus rings are never removed (spec §8).
-- [ ] Every criterion in dashboard-specification.md §11 passes.
+- [x] No external network requests (verified from a devtools trace).
+- [x] `prefers-reduced-motion` disables the status pulse; focus rings are never removed (spec §8).
+- [x] Every criterion in dashboard-specification.md §11 passes.
 
 ---
 
@@ -680,10 +686,10 @@ shipped CSS must agree; a mismatch is itself a failure.
 **Dependencies:** TRK-020
 
 **Acceptance criteria:**
-- [ ] Passes on the current palette in both modes.
-- [ ] Fails if any slot is edited to a non-conforming value.
-- [ ] Skips with a clear message if the validator is unavailable, rather than erroring.
-- [ ] The `--series-*` values in `styles.css` match the spec §2.1 table exactly.
+- [x] Passes on the current palette in both modes.
+- [x] Fails if any slot is edited to a non-conforming value.
+- [x] Skips with a clear message if the validator is unavailable, rather than erroring.
+- [x] The `--series-*` values in `styles.css` match the spec §2.1 table exactly.
 
 ---
 

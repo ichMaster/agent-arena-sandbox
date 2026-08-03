@@ -213,8 +213,13 @@ def test_reconciliation_is_never_a_gate(active_run: str) -> None:
 
 
 def test_settings_json_holds_matchers_and_commands_only() -> None:
-    """Architecture §7: the one file outside codegen/ must stay a pointer, not logic."""
-    settings_path = paths.codegen_root().parent / ".claude" / "settings.json"
+    """Architecture §7: the registration is a pointer, never logic.
+
+    Shipped as a template inside codegen/ rather than an enabled .claude/settings.json:
+    a committed registration fires on every tool call in every session for anyone who
+    clones the repo, and a broken one BLOCKS those calls. Opt in deliberately.
+    """
+    settings_path = paths.codegen_root() / "hooks" / "settings.hooks.json"
     settings = json.loads(settings_path.read_text(encoding="utf-8"))
 
     commands = [
@@ -225,9 +230,17 @@ def test_settings_json_holds_matchers_and_commands_only() -> None:
     ]
     assert commands, "no hooks registered"
     for command in commands:
-        assert command.startswith("python3 codegen/hooks/"), command
+        # $CLAUDE_PROJECT_DIR, not a relative path. A relative path resolves against the
+        # session's cwd, which is not the repo root whenever a command has cd'd -- the
+        # hook then silently fails with "can't open file". Found the hard way: this
+        # registration broke live, in the session that wrote it.
+        assert "$CLAUDE_PROJECT_DIR" in command, command
+        assert "/codegen/hooks/" in command, command
+        assert not command.startswith("python3 codegen/"), (
+            "relative hook path: breaks whenever cwd is not the repo root"
+        )
         # A command is an invocation, never a program: no pipes, no chaining, no logic.
-        assert not any(token in command for token in ("&&", "||", ";", "|", "$(", "`")), command
+        assert not any(token in command for token in ("&&", "||", ";", "|", "`")), command
 
     allowed = {"hooks", "matcher", "command", "type", "PostToolUse", "Stop"}
     for group in settings.get("hooks", {}).values():
