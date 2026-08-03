@@ -1,6 +1,6 @@
 ---
 name: ship-solution
-description: Ship the WHOLE solution end-to-end from the already-generated issues files. Per version - reconcile-issues, execute-issues-file (no GitHub), review-and-fix-issues, release-version vXX.YY.00 - timing each version. HARDEN automatically after each phase. At the end, generate a detailed execution report (per-version + per-phase + total statistics and timings). A simplified, file-driven, offline sibling of ship-phase.
+description: Ship the WHOLE solution end-to-end from the already-generated issues files. Takes one selector or a comma-separated LIST of phases/versions/ranges (default: all); the list names TARGETS - missing prerequisite versions are added automatically, de-duplicated, sorted into roadmap dependency order, and already-released versions skipped. Per version - reconcile-issues, execute-issues-file (no GitHub), review-and-fix-issues, release-version vXX.YY.00 - timing each version. HARDEN after each phase by default (--no-harden to skip). At the end, generate a detailed execution report (per-version + per-phase + total statistics and timings). A simplified, file-driven, offline sibling of ship-phase.
 ---
 
 # Skill: Ship Solution
@@ -8,21 +8,20 @@ description: Ship the WHOLE solution end-to-end from the already-generated issue
 Build the **entire solution end-to-end from the already-generated issues files** — no issue
 generation, no GitHub. It walks every phase's versions in order and, per version, reconciles the
 pre-written issues against reality, executes them from the file, reviews-and-fixes, and releases —
-**timing each version** — hardens automatically at each phase boundary, and finally **generates a
-detailed execution report** with statistics and timings summarized **by version, by phase, and in
-total**.
+**timing each version** — hardens at each phase boundary, and finally **generates a detailed execution
+report** with statistics and timings summarized **by version, by phase, and in total**.
 
 This is a simplified, offline sibling of `/ship-phase`. The differences (by ship-phase step):
 
 | ship-phase step | here |
 |---|---|
 | 0. reconcile (inside generate) | **`reconcile-issues`** — review the *pre-generated* issues file and correct drifted issues **in place, with a `⟳ Reconciled` change-mark** |
-| 1. generate-issues | **skipped** — the `vXX.YY-issues.md` files already exist |
+| 1. generate-issues | **skipped** — the `vXX.YY-issues.md` files already exist. **Consequence:** a version with no issues file cannot be built here, where ship-phase would simply generate one (see Step 0.4) |
 | 2. upload-issues | **skipped** — no GitHub |
 | 3. execute-issues | **`execute-issues-file`** — implement straight from the file (no GitHub, no issue-closing) |
 | 4. review-and-fix-issues | **kept** (unchanged) |
 | 5. release-version | **kept** (unchanged) |
-| end-of-phase HARDEN | **same** — automatic after every phase (ship-phase can opt out with `--no-harden`; here there is no opt-out) |
+| end-of-phase HARDEN | **same** — by default after every phase, `--no-harden` to skip |
 | per-phase chat report | **replaced** — a single **detailed report** generated after **all** phases |
 
 A **thin orchestrator**: it sequences the sub-skills (`reconcile-issues`, `execute-issues-file`,
@@ -30,38 +29,103 @@ A **thin orchestrator**: it sequences the sub-skills (`reconcile-issues`, `execu
 per-version execution time**, and writes the final report.
 
 > **This pipeline releases.** Invoking `/ship-solution` opts into automated per-version releases (real
-> tags + pushes) **and** the automatic per-phase HARDEN. To build without releasing, use the
-> individual skills.
+> tags + pushes) **and** the per-phase HARDEN sweep. To build without releasing, use the individual
+> skills.
 
 ## Usage
 
 ```
-/ship-solution [phase|version|range]
+/ship-solution [<selector>[,<selector>…]] [--no-harden]
 ```
+
+A **selector** is a phase (`vXX`), a version (`vXX.YY`), or a range (`vXX-vYY`). Pass **one, or a
+comma-separated list of any mix** — the whole list is expanded into a single ordered plan. Omit it
+entirely to ship the whole solution.
 
 - `/ship-solution` — ship **the whole solution**: every version with a `spec/implementation/
   vXX.YY-issues.md`, in roadmap order, then generate the final report.
-- `/ship-solution v03` — just phase v03's versions (still hardened + reported at the end).
-- `/ship-solution v02-v04` — phases v02 through v04.
+- `/ship-solution v03` — phase v03 **and its prerequisites** (v01, v02), hardened per phase, reported
+  at the end.
+- `/ship-solution v02-v04` — phases v02 through v04, prerequisites filled in.
+- `/ship-solution v01,v03,v05` — a **list of phases**, shipped in roadmap order with the gaps filled.
+- `/ship-solution v01.01,v01.03,v02` — a **mixed list**: two individual versions plus a whole phase.
+- `/ship-solution v03 --no-harden` — no hardening sweeps at any phase boundary.
+
+Whitespace around commas is ignored. `--no-harden` applies to **every** phase in the plan; there is no
+per-phase form.
+
+> **The list is a target, not the whole plan.** Missing prerequisites are **added automatically** — the
+> roadmap is cumulative, so `/ship-solution v03` plans v01 and v02 as well. Anything already released is
+> then skipped, so on a repo built up to v05.02, `/ship-solution v05.03` does exactly one version's
+> work. You name the destination; the skill works out what has to happen to get there.
+>
+> Unlike `/ship-phase`, this skill **cannot generate a missing issues file** — so a required
+> prerequisite that has neither a release tag nor an issues file is a hard stop, not a skip (Step 0.4).
 
 ## Instructions
 
 ### Step 0: Scope, baseline, plan — and start the clock
 
-1. Normalize the argument to a **phase** (`vXX`), a **version** (`vXX.YY`), or a **range** — default:
-   **all**.
-2. Build the ordered plan from the **issues files present**: read
-   [spec/roadmap.md](../../../spec/roadmap.md) for phase/version order and include each `vXX.YY` that
-   has a `spec/implementation/vXX.YY-issues.md`. Group versions under their phase, in order.
-3. Confirm the working dev branch + a clean tree; establish a **green baseline** (`pytest` + strict
+1. **Parse the selector list.** Split the argument on commas and trim whitespace; each element is a
+   **phase** (`vXX`), a **version** (`vXX.YY`), or a **range** (`vXX-vYY`). **No argument → all**
+   versions that have an issues file. Record whether `--no-harden` was passed (it applies to the whole
+   plan). If any element doesn't resolve to a real roadmap phase/version — a typo, an out-of-range
+   `v09`, a reversed range (`v03-v01`) — **name it and ask**; never drop it and ship the rest.
+2. **Expand to a version set.** Read [spec/roadmap.md](../../../spec/roadmap.md) and resolve every
+   selector to individual versions (`### vXX.YY` headings under `## vXX`, in file order): a phase → all
+   its versions; a range → all versions of the phases it spans; a version → itself. **De-duplicate.**
+3. **Close the set under its dependencies.** The roadmap is cumulative — v03 (Web UI) cannot be built
+   without v01's engine and server or v02's agent. Take the **highest** version in the set and add
+   **every roadmap version preceding it** that isn't already there. Missing prerequisites are executed,
+   not warned about. **Report the added versions** at confirmation, but don't ask permission — they are
+   requirements, not scope creep.
+4. **Resolve each version in the closed set to one of three states**, in this order:
+   - **Already released** (tag `vXX.YY.00` exists) → **skip**; the dependency is satisfied. This is what
+     keeps the fill cheap: on a repo built to v05.02, `/ship-solution v05.03` still runs one version.
+   - **Not released, has `spec/implementation/vXX.YY-issues.md`** → **include** in the plan.
+   - **Not released, no issues file** → **STOP.** This skill executes from issues files and cannot
+     generate one. Name every version in this state, say plainly that the run cannot proceed because a
+     target depends on them, and offer the two real options: run `/generate-issues vXX.YY` for each (or
+     author the files), or use `/ship-phase`, which generates them as step 1. **Never silently drop the
+     version and continue** — the target would then build against code its prerequisite never wrote.
+
+   A partially-done version (issues/report exist but no tag) is *not* released: it resumes from its
+   remaining steps, since the sub-skills are idempotent.
+5. **Sort into roadmap order and group by phase.** The set is a *set*, never a running order —
+   `/ship-solution v03,v01` ships v01 first. This is not cosmetic: each version reconciles against the
+   previous one's real, released code, so running out of roadmap order would reconcile against a
+   codebase that doesn't exist yet. **If the resulting order differs from what was typed, say so.**
+6. Confirm the working dev branch + a clean tree; establish a **green baseline** (`pytest` + strict
    `mypy`) and **record the baseline test count** (the "before" for statistics). Never start red.
-4. **Skip already-shipped versions** (release tag `vXX.YY.00` exists); resume a partial version
-   from its remaining steps (sub-skills are idempotent).
-5. **Start the run clock:** capture `RUN_START=$(date +%s)`. Keep a **running stats table** as you go
+7. **Start the run clock:** capture `RUN_START=$(date +%s)`. Keep a **running stats table** as you go
    (append each version's row as it finishes to **`.ship-solution-progress.md`** in the repo root — it
    is gitignored — so a long run never loses a measurement).
-6. **Confirm the plan once**, then run — don't re-confirm each sub-step; pause only for the blockers in
-   the rules.
+8. **Confirm the plan once** — show the resolved, ordered version list grouped by phase, with the
+   dependency fill, any reordering, and already-released skips called out. Then run: don't re-confirm
+   each sub-step; pause only for the blockers in the rules.
+
+**Worked example** — `/ship-solution v03.02,v01`, on a repo where v01 is released and every version
+has an issues file:
+
+```
+selectors : v03.02 · v01
+expanded  : v03.02 | v01.01 v01.02 v01.03 v01.04
+filled    : + v02.01 v02.02 v02.03 v03.01     ← prerequisites of v03.02, not named by the user
+resolved  : v01.01–v01.04 released → skipped
+            v02.01–v02.03, v03.01, v03.02 → have issues files → included
+ordered   : v02.01 → v02.02 → v02.03 → v03.01 → v03.02
+
+PLAN (5 versions to run)
+  v02  v02.01, v02.02, v02.03    → HARDEN → phase row
+  v03  v03.01, v03.02            → HARDEN → phase row
+
+ℹ filled in v02.01–v02.03 and v03.01: v03.02 cannot build without them.
+ℹ reordered: v03.02 was listed first, ships last — roadmap order is required.
+ℹ skipped v01.01–v01.04: already released.
+```
+
+Had `v02.02` lacked an issues file, the run would **stop at Step 0.4** rather than skipping it — v03.02
+depends on it, and this skill cannot generate the file.
 
 ### Step 1: For each phase → for each version — timed, gated
 
@@ -93,10 +157,15 @@ Gate the hand-offs: reconcile → execute → review → release; **release only
 items are committed and the suite is green**; the **next version only after this one is released**.
 Do **not** report to chat between versions.
 
-### Step 2: End of every phase — HARDEN (automatic), then close the phase clock
+### Step 2: End of every phase — HARDEN (default; `--no-harden` to skip), then close the phase clock
 
-When a phase's last version is released, run the sweep **automatically** (invoking `/ship-solution` is
-the standing consent): invoke **`harden-findings vXX --release`** — it fixes every still-unfixed 🔴
+When a phase's last version is released, run the sweep. **This is the default** — invoking
+`/ship-solution` is the consent, exactly as it is for the automated per-version releases the same
+command performs; the Step 0 plan already included it, so don't ask. **With `--no-harden`, skip it
+entirely**: the deferred HIGH/MEDIUM findings stay in their documented homes, and the phase row records
+the sweep as skipped with those findings listed as still-outstanding.
+
+Otherwise invoke **`harden-findings vXX --release`** — it fixes every still-unfixed 🔴
 HIGH / 🟠 MEDIUM finding from the run's code-review reports (each with a regression test), updates those
 reports, and ships a **`ZZ` patch** on the phase's latest version (🟡 LOW stays deferred; the escape
 hatch still applies). **Stamp `PHASE_END=$(date +%s)`** and record the phase's row: total duration
@@ -118,6 +187,7 @@ chat. Structure:
 - Phases: <n> · Versions: <m> · Issues executed: <k> · Commits: <c>
 - Releases: <all vXX.YY.ZZ tags>
 - Findings: fix-now fixed <a> · hardened HIGH/MEDIUM <b> · LOW deferred <c> · held <d>
+  (with `--no-harden`: hardened 0, and the outstanding HIGH/MEDIUM count with their homes)
 - Reconcile: issues corrected <x> · moot <y> · untouched <z>
 - Suite: <baseline> → <final> tests passing · mypy --strict clean · zero paid calls
 
@@ -145,14 +215,21 @@ phases/total. Every number must trace to the run (execution reports, review docs
 ## Important Rules
 
 - **File-driven, no GitHub.** Issues come from `spec/implementation/*-issues.md`; nothing is uploaded to
-  or closed on GitHub.
+  or closed on GitHub. A required version with **no issues file cannot be built here** — that is a hard
+  stop (Step 0.4), never a silent skip, because this skill cannot generate one.
 - **Reconcile, don't regenerate.** Step 1 corrects the pre-generated issues in place (with `⟳
   Reconciled` marks), the file-driven analogue of ship-phase's reconcile.
 - **Time every version.** Stamp `date +%s` at each version's start/end (and each phase's start/end and
   the run's start/end); persist rows as you go so no measurement is lost.
 - **Release per VERSION**, after its fix-now items are fixed; **next version only after the previous is
   released**. Never batch versions; never release mid-version.
-- **HARDEN runs automatically at each phase boundary** and ships a `ZZ` patch; only LOW stays deferred.
+- **The plan is roadmap-ordered and dependency-complete.** A selector list is a *set* of target
+  versions, not a running order and not the full scope. De-duplicate, **add every missing version
+  preceding the highest selected**, sort into roadmap order, then drop the already-released. The fill is
+  reported but not asked about — those versions are requirements.
+- **HARDEN runs at each phase boundary BY DEFAULT** and ships a `ZZ` patch; only LOW stays deferred.
+  Skipped only with `--no-harden`, and then the outstanding HIGH/MEDIUM findings are recorded as such.
+  A fix that can't land cleanly is **held** by `harden-findings`' escape hatch, not forced.
 - **One report, at the end** — the generated `ship-solution-report.md` (statistics + timings by
   version/phase/total) plus its chat summary. No per-version or per-phase chat report.
 - **Sequential and gated; stop on failure.** Any sub-skill failure or a red `pytest`/`mypy` halts the
@@ -163,5 +240,6 @@ phases/total. Every number must trace to the run (execution reports, review docs
 - **Delegate, never duplicate.** This skill sequences the sub-skills, gates, times, and reports — no
   other logic. Each sub-skill keeps its discipline (one issue = one commit, seam changes carry
   `spec/architecture.md` + contract test, unprefixed `vXX.YY.ZZ` tags, every line generated fresh).
-- **Surface real decisions** — a tag collision, a held HARDEN finding, an ambiguous reconcile, or any
-  execution/validation failure.
+- **Surface real decisions** — a missing issues file for a required version, an unresolvable selector, a
+  tag collision, a held HARDEN finding, an ambiguous reconcile, or any execution/validation failure.
+  Routine plan confirmations run straight through.

@@ -70,9 +70,10 @@ dated `⟳ Reconciled` mark — no code written) → `execute-issues-file vXX.YY
 the file, **no GitHub**) → `review-and-fix-issues vXX.YY` → `release-version vXX.YY.00`. Orchestrated
 by **`/ship-solution`**.
 
-> **`/ship-solution` will do nothing right now.** It builds its plan from the
-> `spec/implementation/vXX.YY-issues.md` files present, and there are none — as do `reconcile-issues`
-> and `execute-issues-file`. Use workflow A, or restore/author issues files first.
+> **`/ship-solution` cannot run right now.** It executes from the `spec/implementation/vXX.YY-issues.md`
+> files and cannot generate one, so with none present it **stops** at Step 0.4 and names the versions it
+> would need — as do `reconcile-issues` and `execute-issues-file`. Use workflow A, or author the files
+> first.
 
 Rules that hold across all skills, either workflow:
 - **Issue ids are `ARENA-###`, globally sequential, and never restart.** `generate-issues` resolves

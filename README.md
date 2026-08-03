@@ -64,13 +64,15 @@ Per version:
 `release-version vXX.YY.00`, then a hardening sweep at the phase boundary (default; `--no-harden` to
 skip) and a chat report. Requires an authenticated `gh`.
 
-**`/ship-solution [scope]`** — offline, file-driven. Same spine, but it reconciles *pre-existing*
-issues files instead of generating them, skips GitHub entirely, hardens automatically at each phase
-boundary, and writes one timed statistics report at the end.
+**`/ship-solution [<selector>[,<selector>…]] [--no-harden]`** — offline, file-driven. Same selector
+list, dependency fill and ordering as `/ship-phase`, but it reconciles *pre-existing* issues files
+instead of generating them, skips GitHub entirely, and writes one timed statistics report at the end.
+Default scope is the whole solution.
 
-> **`/ship-solution` cannot run in the current state.** It plans from the `spec/implementation/
-> vXX.YY-issues.md` files, and there are none. Use `/ship-phase`, which generates them, or restore
-> issues files first.
+> **`/ship-solution` cannot run in the current state.** It executes from `spec/implementation/
+> vXX.YY-issues.md` files and cannot generate one, so with none present it stops at Step 0.4 naming the
+> versions it would need. Use `/ship-phase`, which generates them as its step 1, or author the files
+> first.
 
 > **A version whose release tag exists is skipped** by both orchestrators. The repo currently has no
 > tags at all — the 63 inherited from an earlier multi-build repo were deleted, and `origin` has never
