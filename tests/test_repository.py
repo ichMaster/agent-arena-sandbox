@@ -6,6 +6,7 @@ import json
 
 import pytest
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
 
 from server.models import ChatMessage, Move
@@ -96,6 +97,33 @@ async def test_release_seat_frees_symbol_for_reassignment(db_engine: AsyncEngine
 
     reassigned = await repo.assign_symbol("m1", "t2")
     assert reassigned == s1  # the freed symbol goes to whoever asks next
+
+
+@pytest.mark.asyncio
+async def test_assign_symbol_retries_after_a_concurrent_write_conflict(
+    db_engine: AsyncEngine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression test for code review #1 (v01.02): a losing commit under the
+    UNIQUE(match_id, symbol) race must resolve gracefully, not raise IntegrityError."""
+    repo = await _repo(db_engine)
+    await repo.create_match("m1")
+    await repo.add_participant("t1", "m1", "Alice", is_spectator=False)
+
+    real_commit = repo.session.commit
+    call_count = 0
+
+    async def flaky_commit() -> None:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise IntegrityError("INSERT", {}, Exception("UNIQUE constraint failed"))
+        await real_commit()
+
+    monkeypatch.setattr(repo.session, "commit", flaky_commit)
+
+    symbol = await repo.assign_symbol("m1", "t1")
+    assert symbol in ("X", "O")
+    assert call_count == 2  # first attempt lost the simulated race, retry succeeded
 
 
 @pytest.mark.asyncio

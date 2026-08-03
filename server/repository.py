@@ -10,6 +10,7 @@ import json
 from typing import Any
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from games.interface import GameInterface
@@ -41,7 +42,13 @@ class Repository:
         await self.session.commit()
 
     async def assign_symbol(self, match_id: str, token: str) -> str | None:
-        """The §5.2 seat-assignment algorithm, keyed by token — never by name."""
+        """The §5.2 seat-assignment algorithm, keyed by token — never by name.
+
+        ``UNIQUE(match_id, symbol)`` guards against two concurrent callers both landing
+        on the same free symbol; the check-then-write below can still lose that race, so
+        a conflicting commit is retried once against a fresh read rather than left to
+        raise past this method.
+        """
         participant = await self.session.get(Participant, token)
         if participant is None or participant.match_id != match_id:
             return None
@@ -50,19 +57,25 @@ class Repository:
         if participant.symbol is not None:
             return participant.symbol  # idempotent reconnect
 
-        taken = await self.session.execute(
-            select(Participant.symbol).where(
-                Participant.match_id == match_id, Participant.symbol.is_not(None)
+        for _ in range(2):
+            taken = await self.session.execute(
+                select(Participant.symbol).where(
+                    Participant.match_id == match_id, Participant.symbol.is_not(None)
+                )
             )
-        )
-        taken_symbols = set(taken.scalars().all())
-        free = [s for s in _SYMBOLS if s not in taken_symbols]
-        if not free:
-            return None
+            free = [s for s in _SYMBOLS if s not in set(taken.scalars().all())]
+            if not free:
+                return None
 
-        participant.symbol = free[0]
-        await self.session.commit()
-        return participant.symbol
+            participant.symbol = free[0]
+            try:
+                await self.session.commit()
+                return participant.symbol
+            except IntegrityError:
+                await self.session.rollback()
+                participant.symbol = None  # lost the race; retry against a fresh read
+
+        return None
 
     async def release_seat(self, match_id: str, token: str) -> None:
         participant = await self.session.get(Participant, token)
