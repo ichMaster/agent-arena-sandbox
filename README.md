@@ -101,3 +101,7 @@ the test suite makes **zero paid API calls** — the `LLMClient` seam is always 
 The tracking instrumentation and the dashboard are **not built yet**. Today the skills report only
 after the fact: `/ship-phase` reports once per phase to chat, `/ship-solution` stamps a timestamp per
 version and writes a single report at the end. Neither emits anything consumable during a run.
+
+The design for changing that is in
+[codegen/ship-phase-tracking-vision.md](codegen/ship-phase-tracking-vision.md) — the event model, where
+the instrumentation points are in each skill, and the build order.

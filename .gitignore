@@ -220,3 +220,6 @@ __marimo__/
 # AgentArena project-specific
 *.db
 .ship-solution-progress.md
+
+# Code-generation tracking: run logs are data, not source
+codegen/runs/
