@@ -7,9 +7,11 @@ engine** rather than the shared fixture.
 
 from __future__ import annotations
 
+import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from games.interface import GameInterface
 from games.tictactoe import DRAW
 from server.database import create_engine, create_session_factory, init_models
 from server.repository import Repository
@@ -197,3 +199,46 @@ async def test_a_corrupt_move_row_degrades_one_move_not_the_replay(
     board = (await repo.reconstruct_game("m1")).get_state()["board"]
     assert board[0] == "X" and board[1] == "X"
     assert board.count("O") == 0
+
+
+# ── code review #1: an unknown game must fail loudly, not report "game over" ──
+
+
+async def test_current_turn_raises_for_a_game_with_no_turn_rule(
+    repo: Repository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`None` already means "the game is over" -- it must not also mean "unknown game".
+
+    Returning the sentinel would report every match of a newly added game as finished
+    from the first turn, which in v01.04 becomes a state_update telling clients not to
+    act: a frozen game with no error raised anywhere.
+    """
+
+    class Chess(GameInterface):
+        def get_state(self) -> dict[str, object]:
+            return {"board": []}
+
+        def get_valid_moves(self) -> list[object]:
+            return []
+
+        def apply_move(self, player: str, move: object) -> bool:
+            return False
+
+        def is_game_over(self) -> str | None:
+            return None
+
+    async def other_game(match_id: str) -> GameInterface:
+        return Chess()
+
+    monkeypatch.setattr(repo, "reconstruct_game", other_game)
+
+    with pytest.raises(NotImplementedError, match="Chess"):
+        await repo.current_turn("m1")
+
+
+async def test_current_turn_still_answers_none_for_a_finished_tictactoe(
+    repo: Repository,
+) -> None:
+    """The guard must not disturb the real sentinel."""
+    await _play(repo, X_WINS)
+    assert await repo.current_turn("m1") is None

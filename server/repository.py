@@ -7,6 +7,7 @@ through here, so the identity rule in §5.2 has exactly one place to live.
 from __future__ import annotations
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from games.interface import GameInterface
@@ -99,11 +100,44 @@ class Repository:
             return None
 
         # 4. First free symbol, persisted. UNIQUE(match_id, symbol) is the backstop if
-        #    two connections reach here at once.
+        #    two connections reach here at once -- and a backstop has to be caught to
+        #    be one. Two agents joining a fresh match simultaneously is the normal case
+        #    for the arena demo (§12), so the loser of the race must get the same "no
+        #    seat" answer as every other refusal, not an exception.
+        for symbol in SEATS:
+            if symbol in taken:
+                continue
+            participant.symbol = symbol
+            try:
+                await self._session.commit()
+            except IntegrityError:
+                await self._session.rollback()
+                return await self._seat_after_losing_a_race(match_id, token)
+            return symbol
+        return None
+
+    async def _seat_after_losing_a_race(self, match_id: str, token: str) -> str | None:
+        """Re-read the truth after a concurrent write took the symbol we wanted.
+
+        The other connection won, so the database is now authoritative about what is
+        left. Return whatever seat this token actually holds -- or ``None`` if the match
+        filled while we lost.
+        """
+        participant = await self.get_participant(token)
+        if participant is None or participant.match_id != match_id:
+            return None
+        if participant.symbol is not None:
+            return participant.symbol
+
+        taken = await self._taken_symbols(match_id)
         for symbol in SEATS:
             if symbol not in taken:
                 participant.symbol = symbol
-                await self._session.commit()
+                try:
+                    await self._session.commit()
+                except IntegrityError:
+                    await self._session.rollback()
+                    return None
                 return symbol
         return None
 
@@ -172,9 +206,22 @@ class Repository:
         ``TicTacToe.current_player`` already answers ``None`` once the game is over, so
         the rule that §6.2 depends on -- ``current_turn`` is ``null`` on the
         game-ending move -- lives in exactly one place.
+
+        Turn order is genuinely game-specific and is *not* on the ``GameInterface``
+        seam, so a game without a turn rule raises here rather than returning ``None``.
+        ``None`` already means "the game is over": handing it back for an unknown game
+        would report every match of it as finished from the first turn, and in v01.04
+        that becomes a ``state_update`` telling clients not to act -- a frozen game with
+        no error anywhere. Failing loudly points at the one place that must be updated
+        when a second game is added.
         """
         game = await self.reconstruct_game(match_id)
-        return game.current_player if isinstance(game, TicTacToe) else None
+        if not isinstance(game, TicTacToe):
+            raise NotImplementedError(
+                f"{type(game).__name__} defines no turn rule; add one before serving it "
+                "through current_turn (see spec/architecture.md §4.1, §6.2)"
+            )
+        return game.current_player
 
     async def _taken_symbols(self, match_id: str) -> set[str]:
         result = await self._session.execute(

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 import pytest_asyncio
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from server.repository import SEATS, Repository
 
@@ -173,3 +173,90 @@ def test_a_match_has_exactly_two_seats() -> None:
 @pytest.mark.parametrize("symbol", SEATS)
 def test_each_seat_is_a_single_character(symbol: str) -> None:
     assert len(symbol) == 1
+
+
+# ── code review #2: the seat race must yield "no seat", not an exception ────
+#
+# A real race is a *stale read*: assign_symbol reads the taken symbols, another
+# connection commits, and only then does the first one write. Letting the rival commit
+# before the read simply produces a correct sequential answer and would prove nothing --
+# so the read is stubbed to return what it would have seen a moment earlier, and the
+# write then meets the constraint exactly as it does under load.
+
+
+def _stale_first_read(
+    repo: Repository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Make the first taken-symbols read look like it happened before the rival's commit."""
+    original = repo._taken_symbols
+    seen = {"calls": 0}
+
+    async def stale(match_id: str) -> set[str]:
+        seen["calls"] += 1
+        if seen["calls"] == 1:
+            return set()
+        return await original(match_id)
+
+    monkeypatch.setattr(repo, "_taken_symbols", stale)
+
+
+async def test_losing_the_seat_race_returns_a_seat_not_an_error(
+    repo: Repository,
+    session_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The loser of the race must get an answer, not an IntegrityError.
+
+    UNIQUE(match_id, symbol) stops the double seat -- but a backstop has to be caught
+    to be one. Two agents joining a fresh match at once is the normal case for the
+    arena demo, so this path is ordinary, not exotic.
+    """
+    await repo.add_participant("t1", "m1", "A")
+    await repo.add_participant("t2", "m1", "B")
+
+    async with session_factory() as other:
+        assert await Repository(other).assign_symbol("m1", "t2") == "X"
+
+    _stale_first_read(repo, monkeypatch)
+    assert await repo.assign_symbol("m1", "t1") == "O"
+
+
+async def test_losing_the_race_for_the_last_seat_returns_none(
+    repo: Repository,
+    session_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When the match fills while we lose, the answer is None -- still not an error."""
+    for token in ("t1", "t2", "t3"):
+        await repo.add_participant(token, "m1", token)
+
+    async with session_factory() as other:
+        rival = Repository(other)
+        assert await rival.assign_symbol("m1", "t2") == "X"
+        assert await rival.assign_symbol("m1", "t3") == "O"
+
+    _stale_first_read(repo, monkeypatch)
+    assert await repo.assign_symbol("m1", "t1") is None
+
+
+async def test_the_race_never_persists_two_identical_seats(
+    repo: Repository,
+    session_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The constraint is what makes recovery safe: no double seat may ever land."""
+    await repo.add_participant("t1", "m1", "A")
+    await repo.add_participant("t2", "m1", "B")
+
+    async with session_factory() as other:
+        await Repository(other).assign_symbol("m1", "t2")
+
+    _stale_first_read(repo, monkeypatch)
+    await repo.assign_symbol("m1", "t1")
+
+    held = [
+        p.symbol
+        for p in (await repo.get_participant("t1"), await repo.get_participant("t2"))
+        if p is not None and p.symbol is not None
+    ]
+    assert sorted(held) == ["O", "X"]
