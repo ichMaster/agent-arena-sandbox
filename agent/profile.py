@@ -86,5 +86,5 @@ class AgentProfile(BaseModel):
             raise ProfileError(f"{location} must contain a YAML mapping, got {type(raw).__name__}")
         try:
             return cls(**raw)
-        except Exception as exc:  # noqa: BLE001 - re-raised with the file named
+        except Exception as exc:
             raise ProfileError(f"{location}: {exc}") from exc
