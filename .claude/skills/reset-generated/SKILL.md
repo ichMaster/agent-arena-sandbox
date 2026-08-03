@@ -1,6 +1,6 @@
 ---
 name: reset-generated
-description: Delete everything a tracked run created, by reading the run's own event log - no hardcoded directory names, so it works unchanged in any product. Dry-run first, then apply. Never touches codegen/, the run logs, .env, or GitHub issues.
+description: Delete everything a tracked run created, by reading the run's own event log, plus spec/implementation/ which is cleared whole. No product directory is named, so it works unchanged elsewhere. Dry-run first, then apply. Never touches codegen/, the run logs, .claude/, .env, or GitHub issues.
 ---
 
 # Skill: Reset Generated
@@ -26,6 +26,15 @@ decides *which commits to ask about*; git decides *what was added*.
 
 **That is what makes this portable.** Reusing it in another product needs no configuration:
 a different codebase produces different commits, and the same query returns its files.
+
+**One exception, deliberately hardcoded: `spec/implementation/` is cleared whole.** The
+skills write their issues files, GitHub reports, execution reports and code reviews there by
+name — nine of them do — so it is part of the *tooling*, like `codegen/` and `.claude/`, not
+a product-specific path such as `server/` or `games/`. It is also unreachable by the
+mechanism above: those documents land in `docs:` commits that no event names, so
+`--diff-filter=A` is never asked about them. Left in place they make the next run start on
+top of the last one's paperwork, with `generate-issues` asking whether to overwrite each
+file it already finds.
 
 ## Usage
 
@@ -103,6 +112,8 @@ find . -type d \( -name __pycache__ -o -name '*.egg-info' -o -name .pytest_cache
      -o -name .mypy_cache -o -name .ruff_cache \) -prune -not -path './codegen/*' -not -path './.venv/*' \
      -not -path './.git/*'
 find . -maxdepth 1 -name '*.db'
+echo "== spec/implementation/ -- cleared whole, see above =="
+ls -A spec/implementation 2>/dev/null | wc -l
 echo "== present but no run claims them -- LEFT ALONE =="
 git ls-files | grep -vE '^(codegen|\.claude|spec|\.github)/' \
   | grep -vE '^[^/]*\.md$|^LICENSE$|^\.gitignore$|^\.env' \
@@ -119,6 +130,7 @@ Only with `--apply` **and** the user's confirmation:
 
 ```bash
 while IFS= read -r f; do rm -f -- "$f"; done < /tmp/reset-delete.txt
+rm -rf -- spec/implementation      # the one hardcoded path; see the note above
 find . -type d \( -name __pycache__ -o -name '*.egg-info' -o -name .pytest_cache \
      -o -name .mypy_cache -o -name .ruff_cache \) -prune -not -path './codegen/*' -not -path './.venv/*' \
      -not -path './.git/*' -exec rm -rf {} +
@@ -140,6 +152,9 @@ test -f .gitignore && echo "OK .gitignore survived"
 test -d codegen/runs && echo "OK the logs survived"
 test -d .claude/skills && echo "OK the skills survived"
 git tag | grep -q . && echo "FAIL tags remain: $(git tag | tr '\n' ' ')" || echo "OK no tags left"
+test -d spec/implementation && echo "FAIL spec/implementation survived" \
+  || echo "OK spec/implementation cleared"
+test -f spec/architecture.md && echo "OK the specs themselves survived"
 ```
 
 ## What is never touched
@@ -169,6 +184,7 @@ git tag | grep -q . && echo "FAIL tags remain: $(git tag | tr '\n' ' ')" || echo
   like source — a `spec/` document outside `implementation/`, a root `.md`, `LICENSE` — is
   reported and left in place. A run adding source is unusual enough that a person should
   decide, not a heuristic. Delete them by hand if you are sure.
-- **No hardcoded paths** *for output*. If you find yourself typing a directory name into
-  this skill, the mechanism has been broken — the whole point is that it works unchanged
-  elsewhere.
+- **No hardcoded paths** *for output*, with exactly one exception: `spec/implementation/`,
+  cleared whole because the skills write there by name and no event claims those commits.
+  If you find yourself typing any *other* directory name into this skill, the mechanism has
+  been broken — the whole point is that it works unchanged elsewhere.
