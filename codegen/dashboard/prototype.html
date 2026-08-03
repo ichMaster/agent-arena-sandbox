@@ -91,8 +91,8 @@ select,.btn{font:inherit;font-size:12.5px;color:var(--text-primary);background:v
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
 
 /* KPI tiles -------------------------------------------------------------- */
-.kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:14px}
-@media(max-width:1000px){.kpis{grid-template-columns:repeat(3,1fr)}}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px 18px}
+@media(max-width:1000px){.kpis{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:620px){.kpis{grid-template-columns:repeat(2,1fr)}}
 .kpi .lbl{color:var(--text-muted);font-size:11.5px;margin-bottom:3px}
 .kpi .val{font-size:25px;font-weight:600;letter-spacing:-.01em}
@@ -151,7 +151,7 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.92em}
 
   <div class="topbar">
     <h1>Codegen Tracker</h1>
-    <span class="sub"><code>/ship-phase v01</code> · run-20260803-142012</span>
+    <span class="sub"><code>/ship-phase v01</code> · run-20260803-142012 · branch <code>codegen-tracking</code></span>
     <span class="spacer"></span>
     <button class="btn" id="theme">Toggle theme</button>
   </div>
@@ -182,7 +182,7 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.92em}
           <!-- ETA is a RANGE, never a point. Blank until ≥1 version has finished. -->
           <div class="val" id="h-eta">~38–52 min</div>
           <div class="sub" style="color:var(--text-muted);font-size:11.5px">
-            from 15 issues sampled · v01.04 not yet decomposed, so the upper bound is wide
+            from 15 issues sampled · 1 of 4 versions not yet decomposed, so the upper bound is wide
           </div>
         </div>
       </div>
@@ -206,15 +206,16 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.92em}
     <div class="card c6">
       <div class="cardhead">
         <div>
-          <h2>Burn-down — issues remaining</h2>
-          <p class="note">Size-weighted. Dashed = ideal; dashing is right here because it <em>is</em> a projection.</p>
+          <h2>Burn-down — work remaining</h2>
+          <p class="note">Scope is <em>discovered</em>: the band is what isn't decomposed yet, widest at the start.</p>
         </div>
         <span class="spacer"></span>
         <button class="btn tv" data-tv="tv-burn" aria-pressed="false">Table</button>
       </div>
       <div id="c-burn"></div>
       <div class="legend">
-        <span><i class="key line" style="background:var(--series-1)"></i>Remaining (weighted)</span>
+        <span><i class="key line" style="background:var(--series-1)"></i>Projected remaining</span>
+        <span><i class="key" style="background:var(--series-1);opacity:.28"></i>Uncertainty range</span>
         <span><i class="key line" style="background:var(--text-muted)"></i>Ideal</span>
       </div>
       <div id="tv-burn" hidden></div>
@@ -326,6 +327,11 @@ const ISSUES = [
   {id:'ARENA-012',v:'v01.03',size:'M',dur:302,att:1}, {id:'ARENA-013',v:'v01.03',size:'S',dur:158,att:1},
   {id:'ARENA-014',v:'v01.03',size:'L',dur:571,att:2}, {id:'ARENA-015',v:'v01.03',size:'M',dur:288,att:1}
 ];
+const REPO = {branch:'codegen-tracking', head:'f069fb6', remote:'origin',
+              created:17, closed:15, commits:19};
+// v01.04 is NOT decomposed yet — its issue count does not exist.
+const DECOMPOSED = ['v01.01','v01.02','v01.03'];
+const EST_LO=3, EST_HI=7;                     // roadmap band per undecomposed version
 const STEPS = [['generate','Generate issues',1],['upload','Upload issues',2],
                ['execute','Execute issues',3],['review','Review & fix',4],['release','Release',5]];
 const QSEG  = [['fixnow','Fixed now',1],['hard','Hardened later',3],['defer','Still deferred',4],['held','Held',2]];
@@ -369,13 +375,21 @@ const firstPass=Math.round(ISSUES.filter(i=>i.att===1).length/done*100);
 const findOpen=V.reduce((a,v)=>a+(v.find?v.find.defer+v.find.held:0),0);
 const vmean=id=>{const d=ISSUES.filter(i=>i.v===id);return d.reduce((a,i)=>a+i.dur,0)/d.length;};
 const velD=(vmean('v01.03')-vmean('v01.02'))/vmean('v01.02')*100;
+const undec = V.filter(v=>!DECOMPOSED.includes(v.id)).length;
+const known = V.filter(v=>DECOMPOSED.includes(v.id)).reduce((a,v)=>a+v.issues,0);
+const m2=vmean('v01.02'), m3=vmean('v01.03'), diff=Math.round(m2-m3);
 el('kpis').innerHTML=[
-  ['Issues',`${done} <small>/ ${planned}</small>`,'+4 this version',''],
-  ['Versions',`2 <small>/ 4</small>`,'v01.03 in progress',''],
-  ['Velocity',mmss(vmean('v01.03')),`${velD<0?'▼':'▲'} ${Math.abs(velD).toFixed(1)}% vs v01.02`,velD<0?'up':''],
-  ['Tests passing','156','+58','up'],
-  ['Tests failing now','0','green by construction — see failure panel',''],
-  ['Review findings',`${findOpen} <small>open</small>`,'2 HIGH deferred','']
+  ['Issues done',`${done}`,`${known} known · ${known+undec*EST_LO}–${known+undec*EST_HI} projected`,''],
+  ['Versions','2 <small>/ 4</small>','v01.03 in progress',''],
+  // label names the unit AND the subject; delta names the comparison, shows its value,
+  // and states the direction in words — never an arrow alone on a time metric.
+  ['Mean time per issue',mmss(m3)+' <small>in v01.03</small>',
+     `${Math.abs(diff)}s ${diff>0?'faster':'slower'} than v01.02 (${mmss(m2)})`, diff>0?'up':''],
+  ['Tests passing','156','+58 since v01.02','up'],
+  ['Tests failing now','0','expected — see failure surface',''],
+  ['Review findings','2 <small>open</small>','2 HIGH deferred',''],
+  ['GitHub issues',`${REPO.created} <small>created</small>`,`${REPO.closed} closed · ${REPO.created-REPO.closed} open`,''],
+  ['Commits',`${REPO.commits}`,`on ${REPO.branch} · from ${REPO.head}`,'']
 ].map(([l,v,d,c])=>`<div class="kpi"><div class="lbl">${l}</div><div class="val">${v}</div><div class="delta ${c}">${d}</div></div>`).join('');
 
 /* ── 3 · live tree ──────────────────────────────────────────────────────── */
@@ -411,36 +425,48 @@ el('kpis').innerHTML=[
   el('tree').innerHTML=h;
 })();
 
-/* ── 4 · burn-down ──────────────────────────────────────────────────────── */
+/* ── 4 · burn-down: PROJECTED total (line) + uncertainty range (band) ──────
+   Scope is discovered, not declared. Plotting only *known* remaining would drop the
+   line to zero at every version boundary — reading as "finished" when it means "the
+   next version isn't decomposed yet". So the line is the best estimate of total
+   remaining (known + midpoint), and the band is the low–high range. The band is
+   widest at t=0, when the total is entirely inference, and narrows as versions land. */
 (function(){
-  // remaining size-weighted work; step-UPS are where generate-issues added scope
-  const pts=[[0,33],[4,33],[9,30],[13,27],[16,22],[21,22],[24,35],[29,32],[33,26],[38,21],
-             [43,18],[46,18],[49,31],[52,26]];
-  const W_=560,H=190,L=34,R=12,T=10,B=26;
-  const maxX=70,maxY=40;
+  const LO=9, HI=21;                       // points per undecomposed version (3–7 issues × ~3)
+  // [elapsed_min, known_points, undecomposed_versions]
+  const TL=[[0,0,4],[2,11,3],[6,8,3],[11,5,3],[16,2,3],[22,0,3],
+            [24,18,2],[29,13,2],[34,9,2],[40,4,2],[46,0,2],[48,18,1],[52,12,1]];
+  const lo=p=>p[1]+p[2]*LO, hi=p=>p[1]+p[2]*HI, mid=p=>(lo(p)+hi(p))/2;
+  const W_=560,H=200,L=34,R=14,T=10,B=26, maxX=105, maxY=90;
   const x=v=>L+(v/maxX)*(W_-L-R), y=v=>T+(1-v/maxY)*(H-T-B);
   let s=svg(W_,H);
-  [0,10,20,30,40].forEach(g=>{ s+=`<line class="gridline" x1="${L}" x2="${W_-R}" y1="${y(g)}" y2="${y(g)}"/>
+  [0,30,60,90].forEach(g=>{ s+=`<line class="gridline" x1="${L}" x2="${W_-R}" y1="${y(g)}" y2="${y(g)}"/>
       <text class="ax" x="${L-6}" y="${y(g)+3.5}" text-anchor="end">${g}</text>`; });
   s+=`<line class="axisline" x1="${L}" x2="${W_-R}" y1="${y(0)}" y2="${y(0)}"/>`;
-  [0,20,40,60].forEach(t=>s+=`<text class="ax" x="${x(t)}" y="${H-8}" text-anchor="middle">${t}m</text>`);
-  // ideal: dashed BECAUSE it is a projection (gridlines stay solid)
-  s+=`<line x1="${x(0)}" y1="${y(33)}" x2="${x(68)}" y2="${y(0)}" stroke="var(--text-muted)"
-        stroke-width="2" stroke-dasharray="5 4" stroke-linecap="round"/>`;
-  s+=`<path d="M${pts.map(p=>x(p[0]).toFixed(1)+','+y(p[1]).toFixed(1)).join(' L')}"
+  [0,25,50,75,100].forEach(t=>s+=`<text class="ax" x="${x(t)}" y="${H-8}" text-anchor="middle">${t}m</text>`);
+  const up=TL.map(p=>`${x(p[0]).toFixed(1)},${y(hi(p)).toFixed(1)}`).join(' L');
+  const dn=TL.slice().reverse().map(p=>`${x(p[0]).toFixed(1)},${y(lo(p)).toFixed(1)}`).join(' L');
+  s+=`<path d="M${up} L${dn} Z" fill="${S(1)}" opacity=".16"/>`;
+  s+=`<line x1="${x(0)}" y1="${y(mid(TL[0]))}" x2="${x(95)}" y2="${y(0)}"
+        stroke="var(--text-muted)" stroke-width="2" stroke-dasharray="5 4" stroke-linecap="round"/>`;
+  s+=`<path d="M${TL.map(p=>x(p[0]).toFixed(1)+','+y(mid(p)).toFixed(1)).join(' L')}"
         fill="none" stroke="${S(1)}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
-  const last=pts[pts.length-1];
-  s+=`<circle cx="${x(last[0])}" cy="${y(last[1])}" r="4.5" fill="${S(1)}" stroke="var(--surface-1)" stroke-width="2"/>`;
-  s+=`<text class="dlabel" x="${x(last[0])}" y="${y(last[1])-13}" text-anchor="middle">${last[1]} left</text>`;
-  pts.forEach((p,i)=>{ s+=`<rect class="hit" data-i="${i}" x="${x(p[0])-11}" y="${T}" width="22" height="${H-T-B}"/>`; });
+  const lp=TL[TL.length-1];
+  s+=`<circle cx="${x(lp[0])}" cy="${y(mid(lp))}" r="4.5" fill="${S(1)}" stroke="var(--surface-1)" stroke-width="2"/>`;
+  s+=`<text class="dlabel" x="${x(lp[0])+9}" y="${y(mid(lp))+4}">${lo(lp)}–${hi(lp)}</text>`;
+  s+=`<text class="ax" x="${x(2)}" y="${y(84)}" style="font-size:10px">band narrows as versions are decomposed →</text>`;
+  TL.forEach((p,i)=>{ s+=`<rect class="hit" data-i="${i}" x="${x(p[0])-11}" y="${T}" width="22" height="${H-T-B}"/>`; });
   s+='</svg>';
   el('c-burn').innerHTML=s;
   el('c-burn').querySelectorAll('.hit').forEach(n=>{
-    const p=pts[+n.dataset.i];
-    bind(n,`${p[0]} min elapsed`,[['Remaining',p[1]+' pts',S(1)],['Ideal',Math.max(0,Math.round(33-33*p[0]/68))+' pts','var(--text-muted)']]);
+    const p=TL[+n.dataset.i];
+    bind(n,`${p[0]} min elapsed`,[
+      ['Projected remaining',`${lo(p)}–${hi(p)} pts`,S(1)],
+      ['Known (decomposed)',`${p[1]} pts`],
+      ['Not yet decomposed',`${p[2]} version${p[2]===1?'':'s'} → +${p[2]*LO}–${p[2]*HI}`]]);
   });
-  el('tv-burn').innerHTML='<table><thead><tr><th>Elapsed</th><th>Remaining (pts)</th></tr></thead><tbody>'
-    +pts.map(p=>`<tr><td>${p[0]} min</td><td>${p[1]}</td></tr>`).join('')+'</tbody></table>';
+  el('tv-burn').innerHTML='<table><thead><tr><th>Elapsed</th><th>Known</th><th>Undecomposed</th><th>Projected</th></tr></thead><tbody>'
+    +TL.map(p=>`<tr><td>${p[0]} min</td><td>${p[1]}</td><td>${p[2]} ver</td><td>${lo(p)}–${hi(p)}</td></tr>`).join('')+'</tbody></table>';
 })();
 
 /* ── 5 · velocity ───────────────────────────────────────────────────────── */

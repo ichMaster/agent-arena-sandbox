@@ -172,15 +172,19 @@ per-type `data` requirements, and the append/concurrency contract are in
 |---|---|
 | Run | `run.start` · `run.end` · `run.aborted` |
 | Phase | `phase.start` · `phase.end` |
-| Version | `version.start` · `version.end` · `version.skipped` |
+| Version | `version.start` · `version.decomposed` · `version.end` · `version.skipped` |
 | Step | `step.start` · `step.end` · `gate.blocked` |
-| Issue | `issue.start` · `issue.implement.end` · `issue.validate.end` · `issue.commit` · `issue.failed` · `issue.reverted` · `issue.end` |
+| Issue | `issue.start` · `issue.uploaded` · `issue.implement.end` · `issue.validate.end` · `issue.commit` · `issue.closed` · `issue.failed` · `issue.reverted` · `issue.end` |
 | Review | `finding.raised` · `finding.classified` · `finding.fixed` · `finding.deferred` |
 | Harden | `harden.start` · `harden.skipped` (`--no-harden`) · `harden.finding.fixed` · `harden.finding.held` |
 | Release | `release.tagged` · `release.pushed` |
 
 `gate.blocked` deserves emphasis: `ship-phase`'s gates are its whole contribution as an orchestrator,
 and a blocked gate is the clearest possible explanation of why a run stopped.
+
+`version.decomposed` deserves the same: it is the instant total scope changes, and everything that
+shows progress depends on distinguishing before from after it. `issue.uploaded` / `issue.closed` carry
+the GitHub issue numbers, which is what makes created/closed/open countable at all.
 
 ---
 
@@ -264,10 +268,26 @@ doesn't belong on the dashboard.
 |---|---|
 | Current node (phase / version / step / issue) | latest `*.start` with no matching `*.end` |
 | Versions done / planned · issues done / planned | `version.end` count vs the Step 0 plan |
-| **Work remaining** (issues, and versions) | plan − completed; the burn-down series |
+| **Work remaining** — as a *range*, not a number | see "scope is discovered" below |
 | **Estimated time to finish (ETA)** | see the model below |
 | Elapsed per node, and total | `*.end.ts − *.start.ts`; live nodes use `now − start` |
 | Versions skipped as already-released | `version.skipped` |
+
+**Scope is discovered, not declared — and the dashboard must say so.** At `run.start` the plan lists
+**versions**; it cannot list issues, because they do not exist yet. `generate-issues` decomposes one
+version at a time into 3–7 issues, so the issue total only becomes known version by version, partway
+through the run.
+
+So there is no honest "17 of 22 issues". There is:
+
+```
+known      issues from versions already decomposed        ← a fact
+estimated  3–7 per version not yet decomposed             ← a range, from the roadmap
+           (once ≥1 version is decomposed, use the observed mean instead)
+```
+
+Every progress display carries both, and **no display collapses them into one number**. "15 done ·
+17 known · 20–24 projected" is honest; "15 / 22" is a guess wearing the costume of a fact.
 
 **The ETA model.** An ETA is only possible because Step 0 confirms the *whole* plan before anything
 runs — total scope is known up front. Remaining time decomposes into three terms, each measurable from
@@ -326,6 +346,20 @@ considerably — use per-size means once each size has samples, and fall back to
 | Closed by review vs by the harden sweep | `finding.fixed` vs `harden.finding.fixed` |
 | Held by the escape hatch, with reason | `harden.finding.held` |
 
+**GitHub & repo — "what exists outside this machine"**
+
+| Metric | Derived from |
+|---|---|
+| Issues **created** on GitHub | count of `issue.uploaded` |
+| Issues **closed** | count of `issue.closed` |
+| Issues open | created − closed |
+| Commits produced by the run | `issue.commit` + `finding.fixed` + `harden.finding.fixed` + release commits |
+| **Branch** the run is on, and HEAD at start | `run.start.data.git` `{branch, head_sha, remote}` |
+
+Branch matters more than it looks: every run writes commits, tags and GitHub issues, and the single
+most useful thing to see before reading any other number is **which branch this happened on**. It is
+also the cheapest guard against reading yesterday's run as today's.
+
 **Output — "what the run actually produced"**
 
 | Metric | Derived from |
@@ -355,35 +389,67 @@ still undecomposed).
 **2 · KPI row — stat tiles.** Value + delta + sparkline each; a handful of headline numbers is a KPI
 row, not a grouped bar chart. The six that matter:
 
-| Tile | Reads |
-|---|---|
-| Issues | `18 / 27` · +3 since last version |
-| Versions | `2 / 5` |
-| Velocity | `4m 12s` per issue · ▼ 18% vs previous version |
-| Tests passing | `184` · +41 |
-| Tests failing **now** | `0` — see the note under panel 7 |
-| Review findings | `7` open · 2 HIGH |
+| Tile | Reads | Why it is worded that way |
+|---|---|---|
+| Issues done | `15 done` · `17 known · 20–24 projected` | never a bare "of N" — scope is discovered |
+| Versions | `2 / 4` | versions *are* known up front, so a fraction is honest here |
+| Mean time per issue | `5:30 in v01.03` · `12s faster than v01.02 (5:42)` | see below |
+| Tests passing | `156` · `+58` | |
+| Tests failing **now** | `0` | expected reading — see panel 7 |
+| Review findings | `2 open` · `2 HIGH deferred` | |
+| GitHub issues | `17 created · 15 closed · 2 open` | |
+| Commits · branch | `19` on `codegen-tracking` | which branch this run is writing to |
+
+**A stat tile has to say what it is measuring.** `Velocity 5:30 ▼0.6%` fails three ways: it does not
+say 5:30 *of what*, it does not say *which* comparison, and a green down-arrow on a **time** metric is
+genuinely ambiguous — down is faster, but the reader has to work that out. The rules here:
+
+- **Name the unit and the subject in the label** — "mean time per issue", not "velocity".
+- **Name the comparison and show its value** — "vs v01.02 (5:42)" — so the delta is checkable.
+- **Say the direction in words** — "faster" / "slower", never an arrow alone. Colour agrees with the
+  word; it never carries the meaning by itself.
+- **A percentage under ~2% does not earn its place.** `0.6%` off a 15-sample mean is noise dressed as
+  precision; show the absolute difference (`12s faster`) and let the reader judge.
 
 **3 · Live tree — the primary panel, and it is a tree, not a chart.** run → phase → version → step →
 issue, each row showing status and elapsed, the active branch expanded. Five nested levels with
 per-node state is more classes than color can carry; the honest form is an indented list with status
 icons. Everything else on the page is secondary to this.
 
-**4 · Burn-down — line, remaining issues against elapsed time.** The canonical "will this land"
-picture: actual remaining work descending toward zero, with a straight **dashed ideal line** from
-(start, total) to (projected end, 0). Dashing is correct *here* specifically because the ideal line is
-a projection — that is the one thing dashing should mean, which is why gridlines and axes must stay
-solid.
+**4 · Burn-down — a solid line plus an uncertainty band, against elapsed time.**
 
-Two refinements worth having:
+> **"How do you know the total at the start?" — you don't, and the chart has to admit it.** This is the
+> one panel where a conventional burn-down would lie. A normal burn-down assumes fixed scope known on
+> day one; here scope is *discovered*, one `generate-issues` at a time (§6.1).
+
+Two layers:
+
+- **A solid line — projected total remaining**, i.e. work known to remain *plus* the midpoint estimate
+  for versions not yet decomposed.
+- **A band around it — the low–high range** of that estimate (3–7 issues per undecomposed version; the
+  observed mean once there is one). The band is **widest at t = 0**, when the total is entirely
+  inference, and **narrows to nothing** once the last version is decomposed.
+
+That inversion is the point: the chart opens by showing how little it knows and earns precision as it
+runs. A single confident line from a made-up total would be the lie.
+
+> **Why the line is the projection and not the known-work figure.** Plotting *only* known remaining is
+> the more obvious reading of "show the facts", and it is wrong: known work drops to **zero at every
+> version boundary** — the moment one version's issues are all done and the next has not been
+> decomposed. A line touching zero reads as "finished" when it means "nothing is decomposed right now".
+> Prototyping it made this obvious immediately. The known figure stays available in the tooltip and the
+> table view, where it cannot be misread as completion.
 
 - **Weight by issue size.** Burning down raw issue *count* makes three `S` issues look like more
-  progress than one `L`. Weighting by S/M/L (1/3/5, say) tracks real work and makes the curve far less
-  jumpy.
-- **The line goes UP sometimes, and that is a feature.** Remaining work *increases* when
-  `generate-issues` decomposes the next version and adds its issues to the plan. Show those step-ups —
-  they are the visual signature of scope arriving, and smoothing them away would hide the single
-  biggest source of ETA error.
+  progress than one `L`. Weighting by S/M/L (1/3/5, say) tracks real work and steadies the curve.
+- **Residual steps are estimate error — and are the measurement.** With the band drawn, a version that
+  decomposes into roughly the predicted amount slots into space already reserved for it. A jump *past*
+  the band means the estimate was wrong, which is exactly what you want to see and is invisible on a
+  fixed-scope burn-down.
+
+The **dashed ideal line** runs from the current best total estimate to zero. Dashing is right here
+because it *is* a projection — the one thing dashing should mean, and why gridlines and axes stay
+solid. It moves when the estimate moves; that is honesty, not instability.
 
 **5 · Velocity — bar per version, mean time per issue.** Answers "are we speeding up or slowing down"
 across the run. Ordered categories on an ordered axis, one hue.

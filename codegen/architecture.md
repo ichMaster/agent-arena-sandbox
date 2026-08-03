@@ -97,7 +97,7 @@ not silently repaired.
 
 | Type | status | `data` (required) |
 |---|---|---|
-| `run.start` | — | `command`, `plan` (ordered version ids), `baseline` `{tests,mypy_errors}` |
+| `run.start` | — | `command`, `plan` (ordered version ids), `baseline` `{tests,mypy_errors}`, `git` `{branch,head_sha,remote}` |
 | `run.end` | ok/fail | `versions_done`, `issues_done` |
 | `run.aborted` | fail | `reason` |
 | `phase.start` | — | — |
@@ -107,6 +107,9 @@ not silently repaired.
 | `version.skipped` | skip | `reason` (`already-released`) |
 | `step.start` | — | — |
 | `step.end` | ok/fail | — |
+| `version.decomposed` | ok | `issues` (ids + `size`) — **the moment scope becomes known**, see §3.1 |
+| `issue.uploaded` | ok | `issue`, `gh_number`, `url` |
+| `issue.closed` | ok | `issue`, `gh_number` |
 | `gate.blocked` | fail | `gate`, `reason` |
 | `issue.start` | — | `size` (`S`/`M`/`L`), `area` |
 | `issue.implement.end` | ok/fail | `files_changed` |
@@ -128,6 +131,22 @@ not silently repaired.
 
 **Pairing rule.** Every `*.start` has exactly one matching `*.end` / `*.skipped` / `*.aborted` in the
 same scope. An unmatched `*.start` means the run died mid-node (§9.2).
+
+### 3.1 Scope is discovered, not declared
+
+The plan on `run.start` lists **versions**, not issues — because issue counts do not exist yet.
+`generate-issues` decomposes one version at a time into 3–7 issues, so a version's issue count is
+unknown until its `version.decomposed` event fires, partway through the run.
+
+This is why `version.decomposed` is a first-class event rather than an implementation detail of
+`step.end{generate-issues}`: it is the instant total scope changes, and every consumer that shows
+progress — burn-down, ETA, "issues done / planned" — must distinguish **known** work from
+**estimated** work. A consumer that treats the plan as a fixed issue total will be wrong for most of
+the run and will not know it.
+
+Estimating the unknown remainder: for each version not yet decomposed, use the observed mean issue
+count so far; before there is one, use the roadmap's 3–7 band. Consumers must carry the low and high
+separately (§6 `state.scope`) rather than collapsing to a midpoint.
 
 ---
 
@@ -235,8 +254,11 @@ That is what makes golden-fixture tests (§10.2) possible at all.
   "plan": ["v01.01","v01.02","v01.03","v01.04"],
   "tree": [ { "id":"v01.01", "kind":"version", "status":"ok", "start":"…", "end":"…",
               "children":[ {"id":"execute-issues","kind":"step", "…":"…"} ] } ],
-  "metrics": { "issues_done": 15, "issues_planned": 22, "first_pass_rate": 0.80,
+  "metrics": { "issues_done": 15, "first_pass_rate": 0.80,
                "mean_issue_s": 302.9, "tests_passing": 156, "findings_open": 2 },
+  "scope":   { "known": 17, "est_low": 20, "est_high": 24, "undecomposed": ["v01.04"] },
+  "github":  { "created": 17, "closed": 15, "open": 2, "commits": 19,
+               "branch": "codegen-tracking", "head_sha": "f069fb6" },
   "eta": { "low_s": 2280, "high_s": 3120, "basis": {"issues_sampled":15,"undecomposed_versions":1} },
   "quarantine": [], "counts": {"events": 412, "torn": 0, "malformed": 0}
 }
@@ -245,6 +267,14 @@ That is what makes golden-fixture tests (§10.2) possible at all.
 **ETA carries its own basis.** The panel is contractually required to show sample size and how much
 scope is undecomposed (vision §6.1), so the reducer emits those fields rather than leaving the UI to
 invent confidence. `eta` is `null` until at least one `version.end` exists.
+
+**`scope` is a range, never a scalar.** `known` counts issues from versions already decomposed;
+`est_low`/`est_high` add the estimated remainder for versions that are not (§3.1). There is
+deliberately no `issues_planned` field — a single number there would be a guess wearing the costume
+of a fact, and every consumer would render it as certain.
+
+**`github.commits`** counts every commit the run produced — `issue.commit`, `finding.fixed`,
+`harden.finding.fixed`, and the release commits — not just issue commits.
 
 ---
 
