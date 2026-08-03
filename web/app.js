@@ -159,6 +159,38 @@ function updateActiveCard(currentTurn) {
   if (cardO) cardO.classList.toggle("active", currentTurn === "O");
 }
 
+// Freezes the board (every cell disabled) and shows the result — web_ui_specification.md
+// §6.1. `isGameActive` only ever flips back to true at the start of a new match
+// (connectWebSocket, §7) — without that reset a second match in the same tab would
+// render every cell permanently disabled.
+function handleGameOver(result) {
+  isGameActive = false;
+  for (let i = 0; i < 9; i++) {
+    const cell = document.getElementById(`cell-${i}`);
+    if (cell) {
+      cell.disabled = true;
+      cell.classList.remove("playable");
+    }
+  }
+  updateActiveCard(null);
+
+  const label = document.getElementById("connection-label");
+  if (label) {
+    label.textContent = `Game Over — ${result}`;
+  }
+  const banner = document.getElementById("turn-banner");
+  if (banner) {
+    banner.textContent = result === "draw" ? "It's a draw!" : `Game over — ${result} wins!`;
+  }
+}
+
+function showError(detail) {
+  const banner = document.getElementById("turn-banner");
+  if (banner) {
+    banner.textContent = `Error: ${detail}`;
+  }
+}
+
 // One case per server event (web_ui_specification.md §6.1).
 function routeEvent({ event, payload }) {
   switch (event) {
@@ -175,9 +207,10 @@ function routeEvent({ event, payload }) {
     case "chat_message":
       break;
     case "game_over":
-      isGameActive = false;
+      handleGameOver(payload.result);
       break;
     case "error":
+      showError(payload.detail);
       break;
     default:
       break;
