@@ -24,6 +24,7 @@ from server.database import (
     init_models,
     session_scope,
 )
+from server.handlers import handle_action
 from server.match import claim_seat, match_view, release_seat
 from server.repository import Repository
 from server.schemas import (
@@ -251,8 +252,7 @@ async def _serve(
         if parsed is None:
             await manager.send_to(websocket, error_event("unrecognised message"))
             continue
-        action, _payload = parsed
-        # submit_move lands in ARENA-016 and chat in ARENA-017. Until then a
-        # well-formed action is refused rather than silently ignored -- a client that
-        # got no reply at all could not tell the server from a dropped frame.
-        await manager.send_to(websocket, error_event(f"action not available: {action}"))
+        action, payload = parsed
+        await handle_action(
+            manager, session, match_id, token, action, payload, websocket
+        )
