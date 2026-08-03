@@ -51,8 +51,8 @@ source.
 > A version whose release tag exists is skipped by both orchestrators — see *Versioning*. The repo
 > currently has no tags, so nothing is skipped.
 
-> **Starting a validation run?** Read [codegen/NEXT-SESSION.md](codegen/NEXT-SESSION.md) first —
-> the command, the per-version tracking gate, and the pre-flight checks.
+> **Starting a validation run?** Read [codegen/README.md](codegen/README.md) first — the
+> command, the pre-flight checks, the per-version tracking gate, and the dashboard.
 
 ## Two build workflows — pick one deliberately
 

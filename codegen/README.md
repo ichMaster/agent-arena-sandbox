@@ -126,6 +126,39 @@ escapes its card, no bar has zero height, and no label lands on its neighbour.
 
 ---
 
+## Starting a run
+
+```
+/ship-phase v03
+```
+
+Ten versions, v01.01 → v03.03. Dependency fill adds v01 and v02 on its own, so naming the
+last phase is the whole command.
+
+**Check first — one of these silently does nothing rather than failing:**
+
+```bash
+git status --short        # must be clean
+git tag                   # see below
+gh auth status            # upload-issues needs it
+python3 -c "import json;print(json.load(open('.claude/settings.json'))['hooks'].keys())"
+```
+
+`git tag` is the trap. **Both orchestrators skip any version whose release tag already
+exists**, so a repo carrying tags from a previous run will skip those versions and report
+success having built nothing. After a `/reset-generated` the tags are gone; if you are
+re-running without a reset, delete them by hand first.
+
+The hooks load at **session start**. Editing `.claude/settings.json` mid-session leaves the
+independent floor absent, and `reconcile` then has nothing to measure the skills against —
+restart the session after changing it.
+
+Two behaviours worth checking early, because they fail quietly: the burn-down's uncertainty
+band should be **widest at the start** and narrow as each version decomposes, and the `Now`
+line should name the **deepest running node**, not a finished one.
+
+---
+
 ## The gate you must not skip
 
 ```bash
@@ -234,4 +267,3 @@ real log.
 | [architecture.md](architecture.md) | the event contract, log format, guarantees, test strategy |
 | [dashboard-specification.md](dashboard-specification.md) | how the UI is built, and the design rules behind it |
 | [implementation-plan.md](implementation-plan.md) | the 24 build tasks, and the validation workload |
-| [NEXT-SESSION.md](NEXT-SESSION.md) | the short handoff for starting a validation run |
