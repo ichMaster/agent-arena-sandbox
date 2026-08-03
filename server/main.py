@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from typing import Annotated
 
 import anyio
-from fastapi import Depends, FastAPI, HTTPException, WebSocket
+from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 
 from server import match
 from server.auth import issue_token
@@ -68,6 +68,9 @@ async def ws_match(websocket: WebSocket, match_id: str, token: str, repo: Reposi
 
     Cleanup runs in `finally` regardless of how the loop ends (WebSocketDisconnect, a
     client-initiated drop surfacing as cancellation, or any other exception) — §10.
+    A clean disconnect — including the expected one `close_room` triggers on every
+    connection still open when a match ends, even the mover's own — is not an error and
+    is caught quietly here rather than left to propagate as an unhandled exception.
     """
     participant = await repo.get_participant(token)
     if participant is None or participant.match_id != match_id:
@@ -114,6 +117,8 @@ async def ws_match(websocket: WebSocket, match_id: str, token: str, repo: Reposi
                     websocket,
                     {"event": "error", "payload": {"detail": f"unknown action: {action!r}"}},
                 )
+    except WebSocketDisconnect:
+        pass
     finally:
         connection_manager.disconnect(match_id, websocket)
         # A client-initiated drop can surface as cancellation of *this* task (§10) via

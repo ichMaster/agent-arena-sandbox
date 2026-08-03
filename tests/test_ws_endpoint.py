@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
 from starlette.websockets import WebSocketDisconnect
 
 from server.database import init_models, make_engine
-from server.main import app, get_repository
+from server.main import app, get_repository, ws_match
 from server.repository import Repository
 
 _POLL_ATTEMPTS = 50
@@ -150,3 +150,38 @@ def test_disconnect_releases_the_seat_for_a_reconnect(
         joined = ws.receive_json()
 
     assert joined["payload"]["symbol"] == "X"  # reclaimed the freed seat
+
+
+class _DisconnectingWS:
+    """A minimal fake WebSocket whose receive raises WebSocketDisconnect immediately —
+    standing in for close_room closing a still-registered socket (ARENA-061's
+    observation: this happens on every normal game completion, not just real drops)."""
+
+    async def accept(self) -> None:
+        pass
+
+    async def send_json(self, data: object) -> None:
+        pass
+
+    async def receive_json(self) -> None:
+        raise WebSocketDisconnect(code=1000)
+
+    async def close(self, code: int = 1000) -> None:
+        pass
+
+
+@pytest.mark.asyncio
+async def test_ws_match_disconnect_does_not_propagate_as_unhandled_exception(
+    ws_engine: AsyncEngine,
+) -> None:
+    """Regression test for code review #1 (v02.03): a clean disconnect must not surface
+    as an unhandled exception out of the route handler."""
+    session_maker = async_sessionmaker(ws_engine, expire_on_commit=False)
+    async with session_maker() as session:
+        repo = Repository(session)
+        await repo.create_match("m1")
+        await repo.add_participant("t1", "m1", "Alice", is_spectator=False)
+
+        # Calling the route function directly (bypassing FastAPI's own DI) — Depends()
+        # is metadata for the app's injection system, not enforced on a plain call.
+        await ws_match(_DisconnectingWS(), "m1", "t1", repo)  # type: ignore[arg-type]
