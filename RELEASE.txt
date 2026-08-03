@@ -1,6 +1,19 @@
 AgentArena -- Release Notes
 ===========================
 
+Version 03.02.00 (2026-08-03)
+---------------------------
+Roadmap phase v03.02 -- Board & gameplay (Player role).
+
+- Cells are enabled only when current_turn matches our symbol AND the server
+  called that cell legal; the client never invents legality.
+- Clicks are guarded against off-turn, finished-game and closed-socket.
+- game_over freezes the board and shows the result.
+- Player cards show both seats with the active one highlighted, and starting a
+  new match in the same tab clears board, banner and chat.
+
+Tests: 443 passing. mypy --strict clean.
+
 Version 03.01.00 (2026-08-03)
 ---------------------------
 Roadmap phase v03.01 -- Static UI shell & connection.
