@@ -73,9 +73,11 @@ async def init_models(engine: AsyncEngine) -> None:
     """Create every table registered on :class:`Base`.
 
     Registration happens as an import side effect, so the models module must have been
-    imported before this runs or the schema comes out empty. ``server.models`` (from
-    ARENA-006) is imported here for exactly that reason.
+    imported before this runs or the schema comes out empty -- which is why the import
+    below is here rather than left to the caller.
     """
+    from server import models  # noqa: F401  (registers the tables on Base.metadata)
+
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
 
