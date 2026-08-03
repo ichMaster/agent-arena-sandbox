@@ -196,13 +196,13 @@ architecture §2–3. This is the single source of truth; the prose in architect
 **Dependencies:** TRK-002
 
 **Acceptance criteria:**
-- [ ] Never raises: parametrised over unwritable path, missing parent, non-serialisable `data`, absent
+- [x] Never raises: parametrised over unwritable path, missing parent, non-serialisable `data`, absent
       `runs/current`, read-only filesystem — each returns `None`, writes nothing to stdout/stderr.
-- [ ] Exactly one `os.write` call per event (assert via monkeypatch).
-- [ ] A 100 KB `data` payload yields a line ≤ 4096 bytes carrying `_truncated: true`.
-- [ ] **Concurrency:** 12 processes × 300 events → exactly 3600 parseable lines, 0 corrupt.
-- [ ] An event failing `validate()` is not written, and the reason lands in `emit-errors.log`.
-- [ ] Emitting 1000 events takes < 2 s wall-clock (it is on the pipeline's critical path).
+- [x] Exactly one `os.write` call per event (assert via monkeypatch).
+- [x] A 100 KB `data` payload yields a line ≤ 4096 bytes carrying `_truncated: true`.
+- [x] **Concurrency:** 12 processes × 300 events → exactly 3600 parseable lines, 0 corrupt.
+- [x] An event failing `validate()` is not written, and the reason lands in `emit-errors.log`.
+- [x] Emitting 1000 events takes < 2 s wall-clock (it is on the pipeline's critical path).
 
 ---
 
@@ -222,11 +222,11 @@ is the one security requirement, and it lives in the emitter so no call site can
 **Dependencies:** TRK-003
 
 **Acceptance criteria:**
-- [ ] A table of ≥ 10 secret-shaped strings, each embedded at a different nesting depth, never appears
+- [x] A table of ≥ 10 secret-shaped strings, each embedded at a different nesting depth, never appears
       in output; `«redacted»` does.
-- [ ] Redaction runs on **every** emit path including the CLI — no `emit()` overload bypasses it.
-- [ ] A realistic 4 KB event redacts in < 1 ms.
-- [ ] Non-secret text containing the word "token" in prose is **not** mangled (no false positives on
+- [x] Redaction runs on **every** emit path including the CLI — no `emit()` overload bypasses it.
+- [x] A realistic 4 KB event redacts in < 1 ms.
+- [x] Non-secret text containing the word "token" in prose is **not** mangled (no false positives on
       `data.title` / `data.reason`).
 
 ---
