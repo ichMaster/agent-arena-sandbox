@@ -79,3 +79,29 @@ def test_the_isolation_guard_fires_when_redirection_is_lost(
     result = pytester.runpytest()
     result.assert_outcomes(errors=1)
     result.stdout.fnmatch_lines(["*Test isolation failed*"])
+
+
+def test_testpaths_resolves_so_the_app_suite_is_never_swept_in() -> None:
+    """The tracker suite must collect only itself.
+
+    testpaths is relative to rootdir, which is codegen/ whether pytest walks up from
+    inside it or is pointed here with `-c codegen/pyproject.toml`. It read
+    "codegen/tests" once, resolving to codegen/codegen/tests -- which does not exist,
+    so pytest fell back to collecting recursively from the cwd. That looked correct
+    only while the generated application had no tests/ directory of its own; the
+    moment a run created one, both suites were silently merged into one number.
+    """
+    import tomllib
+
+    codegen = paths.codegen_root()
+    with (codegen / "pyproject.toml").open("rb") as handle:
+        config = tomllib.load(handle)
+
+    testpaths = config["tool"]["pytest"]["ini_options"]["testpaths"]
+    assert testpaths, "testpaths must be set, or collection falls back to the cwd"
+    for entry in testpaths:
+        resolved = codegen / entry
+        assert resolved.is_dir(), (
+            f"testpaths entry {entry!r} resolves to {resolved}, which does not exist; "
+            "pytest would silently collect recursively from the cwd instead"
+        )

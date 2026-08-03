@@ -62,8 +62,8 @@ def test_pytest_does_not_collect_the_tracker_suite() -> None:
 
     This file becomes pytest's rootdir config and shadows codegen/pyproject.toml,
     so collecting codegen/tests/ from here would error on its missing `pytester`
-    plugin. The tracker suite is run explicitly with
-    `pytest -c codegen/pyproject.toml` instead.
+    plugin. The tracker suite is run from its own directory instead:
+    `cd codegen && pytest`.
     """
     tool = _pyproject()["tool"]
     assert isinstance(tool, dict)

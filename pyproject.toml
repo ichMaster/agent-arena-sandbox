@@ -41,5 +41,8 @@ python_version = "3.11"
 # (codegen/pyproject.toml: testpaths + `-p pytester`). Once this file exists it
 # becomes pytest's rootdir config and shadows the codegen one, so collecting
 # codegen/tests/ from here would error on a missing `pytester` fixture.
-# Run the tracker suite explicitly instead:  pytest -c codegen/pyproject.toml
+# Run the tracker suite from its own directory instead:  cd codegen && pytest
+# (`-c codegen/pyproject.toml` from here does NOT work: pytest honours testpaths
+# only when the invocation directory is the rootdir, so it would recurse from the
+# repo root and merge both suites into one number.)
 testpaths = ["tests"]

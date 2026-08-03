@@ -23,7 +23,12 @@ target-version = "py311"
 select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.pytest.ini_options]
-testpaths = ["codegen/tests"]
+# Relative to rootdir, which is THIS directory (codegen/) whether pytest walks up
+# from inside it or is pointed here with `-c codegen/pyproject.toml`. It read
+# "codegen/tests" before, which resolved to codegen/codegen/tests, did not exist, and
+# made pytest fall back to collecting recursively from the cwd -- silently sweeping in
+# the generated application's suite once one existed.
+testpaths = ["tests"]
 # -p pytester: the guard test runs a nested pytest session to observe its own
 # failure mode. Registered here because codegen/tests/conftest.py is not the
 # rootdir conftest, where pytest_plugins would have to live.
