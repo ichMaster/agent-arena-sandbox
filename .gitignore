@@ -221,5 +221,7 @@ __marimo__/
 *.db
 .ship-solution-progress.md
 
-# Code-generation tracking: run logs are data, not source
+# Code-generation tracking: runtime data, not source.
+# Everything else under codegen/ (tracker/, hooks/, dashboard/, docs) IS committed.
 codegen/runs/
+codegen/var/
