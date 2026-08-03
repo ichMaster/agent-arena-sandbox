@@ -1,0 +1,16 @@
+AgentArena — Release Notes
+===========================
+
+Version 01.01.00 (2026-08-03)
+------------------------------
+- Repo skeleton & packaging: pyproject.toml (strict mypy, pytest config, explicit
+  setuptools package list), games/server/agent package layout (ARENA-036).
+- GameInterface — the abstract game plug-in seam (get_state, get_valid_moves,
+  apply_move, is_game_over), pinned by a contract test (ARENA-037).
+- TicTacToe engine: 9-cell board, X-first turn order, apply_move as the sole
+  legality authority — rejects out-of-range/occupied/wrong-type/wrong-turn moves
+  without raising (ARENA-038).
+- Terminal detection: all 8 winning lines plus full-board draw (ARENA-039).
+- Code review fix: apply_move now rejects further moves once the game has ended
+  (previously a finished game silently kept accepting moves).
+- 32 tests passing, mypy --strict clean on games/.
