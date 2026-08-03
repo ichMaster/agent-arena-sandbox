@@ -1,6 +1,19 @@
 AgentArena -- Release Notes
 ===========================
 
+Version 03.03.00 (2026-08-03)
+---------------------------
+Roadmap phase v03.03 -- Chat & the Observer role. THE v03 GATE.
+
+- Chat posts and renders, sender-labelled, inserted as text and never as HTML --
+  chat is attacker-controlled input that reaches every socket in the room.
+- Observe is a distinct action from Join and sends spectator: true, while Host
+  and Join send false.
+- An observer joins with symbol null, claims no seat, sees the board and chat
+  update live, and a forced submit_move is refused server-side.
+
+Tests: 453 passing. mypy --strict clean.
+
 Version 03.02.00 (2026-08-03)
 ---------------------------
 Roadmap phase v03.02 -- Board & gameplay (Player role).
