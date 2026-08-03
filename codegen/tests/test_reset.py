@@ -338,3 +338,84 @@ def test_a_committed_env_is_reported_not_queued(repo: Path) -> None:
     assert ".env" not in manifest.files, "a secret must never be queued for deletion"
     assert ".env" in manifest.protected, "and the omission must be visible, not silent"
     assert "generated.py" in manifest.files, "ordinary generated files still go"
+
+
+# ── release commits are named by their tag, not by a sha ────────────────────
+
+
+def _release(repo: Path, *tags: str, run: str = "run-20260803-120000") -> None:
+    """A log naming only tags -- which is all `release-version` records."""
+    directory = repo / "codegen" / "runs" / run
+    directory.mkdir(parents=True, exist_ok=True)
+    directory.joinpath("events.jsonl").write_text(
+        "\n".join(
+            json.dumps(
+                {"v": 1, "ts": "2026-08-03T12:01:00.000Z", "run_id": run,
+                 "type": "release.tagged", "emitter": "skill:release-version",
+                 "scope": {}, "data": {"tag": tag}}
+            )
+            for tag in tags
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
+def test_a_release_commit_is_resolved_from_its_tag(repo: Path) -> None:
+    """VERSION and RELEASE.txt must not survive a reset.
+
+    `release.tagged` carries only the tag, so the release commit has no sha anywhere in
+    the log. Without resolving the tag, everything `release-version` creates is claimed
+    by no logged commit and quietly outlives the reset -- and the next run then starts
+    on top of the previous run's version file.
+    """
+    (repo / "VERSION").write_text("02.01.00\n")
+    (repo / "RELEASE.txt").write_text("Version 02.01.00\n")
+    _commit(repo, "Release v02.01.00")
+    subprocess.run(["git", "tag", "v02.01.00"], cwd=repo, check=True)
+    _release(repo, "v02.01.00")
+
+    manifest = reset_mod.build_manifest(repo / "codegen" / "runs", repo=repo)
+    assert "VERSION" in manifest.files, "the version file the run created must be removed"
+    assert "RELEASE.txt" in manifest.files
+    assert "v02.01.00" in manifest.tags
+
+
+def test_a_second_release_claims_the_version_file_once(repo: Path) -> None:
+    """Only the release that ADDED VERSION claims it.
+
+    Every later release rewrites the same file, so a naive per-tag collection would list
+    it once per release and delete-then-fail on the repeats. `--diff-filter=A` still
+    rules: the second tag's commit modified VERSION and therefore claims nothing.
+    """
+    (repo / "VERSION").write_text("02.01.00\n")
+    _commit(repo, "Release v02.01.00")
+    subprocess.run(["git", "tag", "v02.01.00"], cwd=repo, check=True)
+    (repo / "VERSION").write_text("02.02.00\n")
+    _commit(repo, "Release v02.02.00")
+    subprocess.run(["git", "tag", "v02.02.00"], cwd=repo, check=True)
+    _release(repo, "v02.01.00", "v02.02.00")
+
+    manifest = reset_mod.build_manifest(repo / "codegen" / "runs", repo=repo)
+    assert manifest.files.count("VERSION") == 1
+
+
+def test_a_tag_the_log_names_but_git_lost_is_not_fatal(repo: Path) -> None:
+    """A deleted tag resolves to nothing; the rest of the manifest still builds."""
+    _release(repo, "v99.99.99")
+    manifest = reset_mod.build_manifest(repo / "codegen" / "runs", repo=repo)
+    assert "widget/core.py" in manifest.files
+    assert "v99.99.99" in manifest.tags
+
+
+def test_a_release_commit_cannot_delete_a_protected_path(repo: Path) -> None:
+    """The tag path goes through the same guard as every other commit."""
+    (repo / ".env").write_text("ANTHROPIC_API_KEY=sk-ant-not-a-real-key\n")
+    (repo / "VERSION").write_text("02.01.00\n")
+    _commit(repo, "Release v02.01.00 that swept up a secret")
+    subprocess.run(["git", "tag", "v02.01.00"], cwd=repo, check=True)
+    _release(repo, "v02.01.00")
+
+    manifest = reset_mod.build_manifest(repo / "codegen" / "runs", repo=repo)
+    assert "VERSION" in manifest.files
+    assert ".env" not in manifest.files and ".env" in manifest.protected

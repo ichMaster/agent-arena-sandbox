@@ -8,6 +8,11 @@ directory: those mean nothing in the next product. The run recorded every commit
 (``release.tagged``), so the run itself says what to remove. That makes this portable by
 construction rather than by configuration.
 
+A tag is also how a **release** commit is named: ``release.tagged`` carries no sha, so the
+tag is resolved to the commit it points at and that commit is asked the same question as
+any other. Without this, everything ``release-version`` creates -- ``VERSION``,
+``RELEASE.txt`` -- is unclaimed by any commit in the log and survives a reset.
+
 **Created, not merely touched.** A commit's recorded ``files`` list includes files it
 *modified*, and deleting one of those would remove something that predated the run. So
 the file set comes from ``git show --diff-filter=A`` over the commits the log names —
@@ -122,6 +127,18 @@ def files_added_by(sha: str, repo: Path | None = None) -> list[str]:
     return [line for line in out.splitlines() if line.strip()]
 
 
+def _tag_commit(tag: str, repo: Path | None = None) -> str:
+    """The commit a logged tag points at, short-form, or "" if the tag is gone.
+
+    This is what lets a reset account for what `release-version` created. Those events
+    (`release.tagged`) carry only the tag, not a sha -- so the release commit, and the
+    VERSION / RELEASE.txt it adds, would otherwise be unattributable and survive the
+    reset. Git resolves the tag; the log still decides which tags to ask about, so the
+    "log is the manifest" rule holds and nothing is hardcoded.
+    """
+    return _git("rev-list", "-n", "1", "--abbrev-commit", tag, repo=repo).strip()
+
+
 def build_manifest(runs_root: Path, repo: Path | None = None) -> Manifest:
     """Derive, from the logs plus git, exactly what the runs created."""
     manifest = Manifest()
@@ -146,6 +163,14 @@ def build_manifest(runs_root: Path, repo: Path | None = None) -> Manifest:
             tag = str(data.get("tag", ""))
             if tag and tag not in manifest.tags:
                 manifest.tags.append(tag)
+
+    # Release commits are named by their tag, not by a sha, so resolve them here --
+    # otherwise everything `release-version` created (VERSION, RELEASE.txt) is
+    # unclaimed and survives the reset.
+    for tag in manifest.tags:
+        release_sha = _tag_commit(tag, repo)
+        if release_sha and release_sha not in seen_shas:
+            seen_shas.append(release_sha)
 
     files: list[str] = []
     for sha in seen_shas:
