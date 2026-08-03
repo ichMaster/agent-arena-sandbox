@@ -1,6 +1,25 @@
 AgentArena -- Release Notes
 ===========================
 
+Version 02.03.00 (2026-08-03)
+---------------------------
+Roadmap phase v02.03 -- Agent event loop & decision play. THE v02 GATE.
+
+- decide_move: ask the model, validate against valid_moves, retry, then play a
+  random legal move. The fallback is the point -- a model that keeps naming
+  occupied cells would otherwise stall the match forever.
+- AgentSession: join over REST, connect over WS, and act only when current_turn
+  equals its own symbol. The turn is derived from state, never a separate event,
+  which is also what stops the agent acting on the terminal update.
+- CLI: --match-id / --profile / --server-url / --player-name, line-buffered
+  stdout so a redirected log flushes as the game plays, and a direct-run shim.
+- Code review fix: only genuine model failures count as a failed turn; a bug in
+  our own code propagates instead of being retried away.
+
+The LLM is mocked in every test -- no paid call is made anywhere.
+
+Tests: 391 passing. mypy --strict clean.
+
 Version 02.02.00 (2026-08-03)
 ---------------------------
 Roadmap phase v02.02 -- Profile, persona, memory & prompt.
