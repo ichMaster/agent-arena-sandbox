@@ -107,6 +107,8 @@ async def ws_match(websocket: WebSocket, match_id: str, token: str, repo: Reposi
 
             if action == "chat":
                 await _handle_chat(websocket, repo, match_id, participant.player_name, payload)
+            elif action == "submit_move":
+                await _handle_submit_move(websocket, repo, match_id, token, payload.get("move"))
             else:
                 await connection_manager.send_to(
                     websocket,
@@ -142,3 +144,51 @@ async def _handle_chat(
 async def _end_game(match_id: str, result: str) -> None:
     await connection_manager.broadcast(match_id, {"event": "game_over", "payload": {"result": result}})
     await connection_manager.close_room(match_id)
+
+
+async def _handle_submit_move(
+    websocket: WebSocket, repo: Repository, match_id: str, token: str, move: object
+) -> None:
+    """architecture.md §5.4 — read-only seat lookup; the move flow never assigns one."""
+    symbol = await repo.seat_of(match_id, token)
+    if symbol is None:
+        await connection_manager.send_to(
+            websocket, {"event": "error", "payload": {"detail": "no seat"}}
+        )
+        return
+
+    game = await repo.reconstruct_game(match_id)
+    turn = await repo.current_turn(match_id)
+    if symbol != turn:
+        await connection_manager.send_to(
+            websocket, {"event": "error", "payload": {"detail": "not your turn"}}
+        )
+        return
+
+    if not game.apply_move(symbol, move):
+        await connection_manager.send_to(
+            websocket, {"event": "error", "payload": {"detail": "invalid move"}}
+        )
+        return
+
+    await repo.log_move(match_id, symbol, move)
+    result = game.is_game_over()
+    if result is not None:
+        await repo.finish_match(match_id, result)
+
+    state = game.get_state()
+    await connection_manager.broadcast(
+        match_id,
+        {
+            "event": "state_update",
+            "payload": {
+                "board": state["board"],
+                "current_turn": None if result is not None else state["current_player"],
+                "valid_moves": game.get_valid_moves(),
+                "last_move": {"player": symbol, "move": move},
+            },
+        },
+    )
+
+    if result is not None:
+        await _end_game(match_id, result)

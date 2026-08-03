@@ -155,6 +155,19 @@ async def test_get_participant_returns_none_for_unknown_token(db_engine: AsyncEn
 
 
 @pytest.mark.asyncio
+async def test_finish_match_sets_status_and_result(db_engine: AsyncEngine) -> None:
+    repo = await _repo(db_engine)
+    await repo.create_match("m1")
+
+    await repo.finish_match("m1", "X")
+
+    match = await repo.get_match("m1")
+    assert match is not None
+    assert match.status == "finished"
+    assert match.result == "X"
+
+
+@pytest.mark.asyncio
 async def test_log_move_and_log_chat_persist_in_order(db_engine: AsyncEngine) -> None:
     repo = await _repo(db_engine)
     await repo.create_match("m1")

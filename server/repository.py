@@ -107,6 +107,13 @@ class Repository:
         self.session.add(ChatMessage(match_id=match_id, sender=sender, message=message))
         await self.session.commit()
 
+    async def finish_match(self, match_id: str, result: str) -> None:
+        match = await self.get_match(match_id)
+        if match is not None:
+            match.status = "finished"
+            match.result = result
+            await self.session.commit()
+
     async def reconstruct_game(self, match_id: str) -> GameInterface:
         """Replay the move log through a fresh TicTacToe. No board state is stored."""
         result = await self.session.execute(
