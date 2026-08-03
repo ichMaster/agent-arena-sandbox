@@ -103,15 +103,74 @@ function setConnectionStatus(connected) {
   }
 }
 
-// One case per server event (web_ui_specification.md §6.1). Only `joined` does
-// anything this phase — rendering lands in v03.02 (board/state_update) and
-// v03.03 (chat/game_over/error).
+// renderBoard draws marks into the 9 existing #cell-N buttons and toggles each cell's
+// playable/disabled state (web_ui_specification.md §4.2). A cell is playable only when
+// it's empty, the game is active, and it's this client's turn — the interactivity gate
+// *is* the client-side legality signal (§1: no move validation beyond it).
+function renderBoard(board, currentTurn, mySymbolParam, isGameActiveParam) {
+  for (let i = 0; i < 9; i++) {
+    const cell = document.getElementById(`cell-${i}`);
+    if (!cell) continue;
+
+    const mark = board[i];
+    cell.textContent = mark || "";
+    cell.classList.remove("x", "o", "empty", "playable");
+
+    if (mark === "X") {
+      cell.classList.add("x");
+    } else if (mark === "O") {
+      cell.classList.add("o");
+    } else {
+      cell.classList.add("empty");
+    }
+
+    const playable = mark === null && isGameActiveParam && currentTurn === mySymbolParam;
+    if (playable) {
+      cell.classList.add("playable");
+    }
+    cell.disabled = !playable;
+  }
+}
+
+// Falls back to default X/O labels when `symbol` is null (the Observer case, v03.03) —
+// never calls a method directly on `symbol` (web_ui_specification.md §5's
+// null.toLowerCase() regression).
+function initPlayerCards(symbol) {
+  const isX = symbol === "X";
+  const isO = symbol === "O";
+
+  const xName = document.getElementById("player-x-name");
+  const xRole = document.getElementById("player-x-role");
+  const oName = document.getElementById("player-o-name");
+  const oRole = document.getElementById("player-o-role");
+
+  if (xName) xName.textContent = isX ? "You" : "Opponent";
+  if (xRole) xRole.textContent = isX ? "Human · Player" : "Player";
+  if (oName) oName.textContent = isO ? "You" : "Opponent";
+  if (oRole) oRole.textContent = isO ? "Human · Player" : "Player";
+}
+
+// Highlights whichever player card's symbol equals currentTurn; neither is active
+// once currentTurn is null (game over) — web_ui_specification.md §4.3.
+function updateActiveCard(currentTurn) {
+  const cardX = document.getElementById("player-card-x");
+  const cardO = document.getElementById("player-card-o");
+  if (cardX) cardX.classList.toggle("active", currentTurn === "X");
+  if (cardO) cardO.classList.toggle("active", currentTurn === "O");
+}
+
+// One case per server event (web_ui_specification.md §6.1).
 function routeEvent({ event, payload }) {
   switch (event) {
     case "joined":
       mySymbol = payload.symbol;
+      initPlayerCards(mySymbol);
+      renderBoard(payload.board, payload.current_turn, mySymbol, isGameActive);
+      updateActiveCard(payload.current_turn);
       break;
     case "state_update":
+      renderBoard(payload.board, payload.current_turn, mySymbol, isGameActive);
+      updateActiveCard(payload.current_turn);
       break;
     case "chat_message":
       break;
