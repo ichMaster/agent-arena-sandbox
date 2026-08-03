@@ -20,6 +20,21 @@ PLAYERS: tuple[str, str] = ("X", "O")
 #: Cells on the board.
 BOARD_SIZE = 9
 
+#: The eight lines that win: three rows, three columns, two diagonals.
+WINNING_LINES: tuple[tuple[int, int, int], ...] = (
+    (0, 1, 2),
+    (3, 4, 5),
+    (6, 7, 8),
+    (0, 3, 6),
+    (1, 4, 7),
+    (2, 5, 8),
+    (0, 4, 8),
+    (2, 4, 6),
+)
+
+#: Returned by :meth:`TicTacToe.is_game_over` for a full board with no line.
+DRAW = "draw"
+
 
 class TicTacToe(GameInterface):
     """A 9-cell board indexed ``0-8``, empty cells held as ``None``."""
@@ -42,7 +57,9 @@ class TicTacToe(GameInterface):
         return {"board": list(self._board)}
 
     def get_valid_moves(self) -> list[Any]:
-        """Every currently-empty cell index."""
+        """Every currently-empty cell index, or nothing once the game is over."""
+        if self.is_game_over() is not None:
+            return []
         return [index for index, cell in enumerate(self._board) if cell is None]
 
     def apply_move(self, player: str, move: Any) -> bool:
@@ -60,6 +77,8 @@ class TicTacToe(GameInterface):
         order (architecture.md §5.4) and this engine is replayed over a move log
         that is already in order.
         """
+        if self.is_game_over() is not None:
+            return False
         if player not in PLAYERS:
             return False
         if isinstance(move, bool) or not isinstance(move, int):
@@ -74,7 +93,13 @@ class TicTacToe(GameInterface):
     def is_game_over(self) -> str | None:
         """``"X"`` | ``"O"`` | ``"draw"`` once over, or ``None`` while ongoing.
 
-        Terminal detection arrives with ARENA-004; until then every position reads
-        as ongoing.
+        A completed line is checked **before** fullness, so a board that fills on a
+        winning move reports the winner rather than a draw.
         """
+        for a, b, c in WINNING_LINES:
+            symbol = self._board[a]
+            if symbol is not None and symbol == self._board[b] == self._board[c]:
+                return symbol
+        if all(cell is not None for cell in self._board):
+            return DRAW
         return None

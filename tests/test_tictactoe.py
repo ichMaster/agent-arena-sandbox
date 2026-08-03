@@ -58,9 +58,10 @@ def test_valid_moves_start_as_every_cell() -> None:
 
 
 def test_valid_moves_shrink_by_exactly_one_per_move() -> None:
+    """Uses a drawn line-up, so the board fills without the game ending early."""
     game = TicTacToe()
     expected = BOARD_SIZE
-    for index, cell in enumerate([4, 0, 8, 2, 6, 1, 7, 3, 5]):
+    for index, cell in enumerate([0, 1, 2, 4, 3, 5, 7, 6, 8]):
         assert len(game.get_valid_moves()) == expected
         assert game.apply_move("XO"[index % 2], cell) is True
         expected -= 1
