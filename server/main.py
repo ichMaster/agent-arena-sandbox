@@ -93,7 +93,25 @@ async def ws_match(websocket: WebSocket, match_id: str, token: str, repo: Reposi
         )
 
         while True:
-            await websocket.receive_json()  # receive-loop dispatch lands in ARENA-050/051
+            try:
+                envelope = await websocket.receive_json()
+            except ValueError:
+                await connection_manager.send_to(
+                    websocket, {"event": "error", "payload": {"detail": "malformed message"}}
+                )
+                continue
+
+            action = envelope.get("action") if isinstance(envelope, dict) else None
+            payload = envelope.get("payload") if isinstance(envelope, dict) else None
+            payload = payload if isinstance(payload, dict) else {}
+
+            if action == "chat":
+                await _handle_chat(websocket, repo, match_id, participant.player_name, payload)
+            else:
+                await connection_manager.send_to(
+                    websocket,
+                    {"event": "error", "payload": {"detail": f"unknown action: {action!r}"}},
+                )
     finally:
         connection_manager.disconnect(match_id, websocket)
         # A client-initiated drop can surface as cancellation of *this* task (§10) via
@@ -103,3 +121,24 @@ async def ws_match(websocket: WebSocket, match_id: str, token: str, repo: Reposi
         # dependency's session is torn down.
         with anyio.CancelScope(shield=True):
             await repo.release_seat(match_id, token)
+
+
+async def _handle_chat(
+    websocket: WebSocket, repo: Repository, match_id: str, sender: str, payload: dict[str, object]
+) -> None:
+    message = payload.get("message")
+    if not isinstance(message, str) or not message:
+        await connection_manager.send_to(
+            websocket, {"event": "error", "payload": {"detail": "invalid chat payload"}}
+        )
+        return
+
+    await repo.log_chat(match_id, sender, message)
+    await connection_manager.broadcast(
+        match_id, {"event": "chat_message", "payload": {"sender": sender, "message": message}}
+    )
+
+
+async def _end_game(match_id: str, result: str) -> None:
+    await connection_manager.broadcast(match_id, {"event": "game_over", "payload": {"result": result}})
+    await connection_manager.close_room(match_id)
