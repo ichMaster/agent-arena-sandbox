@@ -1,6 +1,29 @@
 AgentArena -- Release Notes
 ===========================
 
+Version 01.03.00 (2026-08-03)
+---------------------------
+Roadmap phase v01.03 -- Match, seats & lobby REST.
+
+- Opaque join tokens (server/auth.py): the token IS the participant id and
+  carries no player-supplied text, so a display name cannot be recovered from
+  an identity handed to clients. validate_token answers None rather than
+  raising, so a bad token becomes a 4001 close at WS connect.
+- Lobby schemas (server/schemas.py): spectator defaults to False, and unknown
+  fields are refused rather than ignored -- a typo'd "spectatr" would otherwise
+  have seated someone who asked to observe.
+- FastAPI app (server/main.py): a lifespan context calling init_models,
+  GET /api/v1/health, POST /api/v1/lobby/match and POST /api/v1/lobby/join,
+  which 404s on an unknown match. is_spectator is written onto the participants
+  row at join, before any seat exists, so an observer can never be handed one.
+- server/match.py: thin seat and turn helpers over the Repository, with no
+  long-lived match object and no registry -- enforced by a test that parses the
+  module and fails on any module-level container.
+- Code review fix: a match view now replays the move log once per call rather
+  than twice, on the path v01.04 walks for every connected socket on every move.
+
+Tests: 220 passing. mypy --strict clean.
+
 Version 01.02.00 (2026-08-03)
 ---------------------------
 Roadmap phase v01.02 -- Persistence layer (SQLite).
