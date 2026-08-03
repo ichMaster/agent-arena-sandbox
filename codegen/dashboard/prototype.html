@@ -89,6 +89,13 @@ select,.btn{font:inherit;font-size:12.5px;color:var(--text-primary);background:v
 .s-ok  .dot{background:var(--good)} .s-fail .dot{background:var(--critical)}
 .s-held .dot{background:var(--serious)} .s-skip .dot{background:var(--text-muted)}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+/* The status word always carries the state; the pulse is decoration only. */
+@media (prefers-reduced-motion: reduce){
+  *{animation:none !important;transition:none !important}
+}
+/* Visible focus for keyboard users on every interactive mark. */
+.hit:focus-visible,.btn:focus-visible,select:focus-visible{
+  outline:2px solid var(--series-1);outline-offset:2px}
 
 /* KPI tiles -------------------------------------------------------------- */
 .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px 18px}

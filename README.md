@@ -113,5 +113,7 @@ The design for changing that lives in `codegen/`:
   concurrency rules, the emitter's never-raise guarantee, redaction, and the test strategy.
 - [implementation-plan.md](codegen/implementation-plan.md) — 22 `TRK-###` tasks in 7 steps, each with
   implementation detail and acceptance criteria.
+- [dashboard-specification.md](codegen/dashboard-specification.md) — how the UI is built: tokens,
+  components, DOM, rendering, interaction, accessibility.
 - [dashboard/prototype.html](codegen/dashboard/prototype.html) — a self-contained working prototype
   of the dashboard, with mock data shaped to the event schema.
