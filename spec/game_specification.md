@@ -90,7 +90,7 @@ A configuration layer for building distinct agent identities without touching co
 
 Five dependency-ordered phases. Each is **independently demoable** and leaves the system in a working state — no phase depends on a later one. A history-review UI, additional games, additional vendors, and the admin dashboard are all **out of these phases** (see the §2 scope table).
 
-Phases map onto the `vXX` version prefix (Phase 1 → `v01`, …); the build workflow later decomposes each into `vXX.YY` sub-versions and `ARENA-xxx` issues. Every phase ships its own tests, and **the LLM is always mocked in tests** — never a paid call.
+Phases map onto the `vXX` version prefix (Phase 1 → `v01`, …); the build workflow later decomposes each into `vXX.YY` sub-versions and `ARENA-xxx` issues. Every phase ships its own tests, and **the LLM is mocked by default in tests**; live calls are permitted and opt-in.
 
 ### Phase 1 — Game Core & Server Foundation *(the gate)*
 **Goal:** the authoritative engine and a running server that owns a match and speaks the WebSocket protocol.

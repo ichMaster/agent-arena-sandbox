@@ -4,7 +4,7 @@ Five self-contained versions, built in order: **v01** Game Core & Server Foundat
 
 Arc: the **server is the single authority and is built first, never depending on a client** (v01). The two seams that keep games and models pluggable — `GameInterface` and `LLMClient` — plus the WebSocket wire contract are established early (v01–v02) and reused unchanged thereafter. The Agent Client (v02) and the Web UI (v03) are **independent clients of the same protocol**, talking to the server only over HTTP/WS. The arena demo (v04) merely composes them; hardening (v05) makes the whole loop resilient. Complexity is added by version, never all at once. Scope stays inside the MVP (Haiku-only, one live match, SQLite state, vanilla UI — [game_specification.md](game_specification.md) §2); a history-review UI, more games, more vendors, and an admin dashboard are explicitly out.
 
-**Versioning (`vXX.YY.ZZ`).** `XX` = roadmap version (`v01`…`v05`), `YY` = phase within it (`v01.03` → `01.03`), `ZZ` = a post-release fix on that phase. Roadmap phase `vXX.YY` → release `vXX.YY.00`, cut when the phase's issues all land and its tests are green; a fix after it bumps `ZZ`. Never bump the version without explicit confirmation. **The LLM is always mocked in tests — no paid model call in any test or CI run, ever.**
+**Versioning (`vXX.YY.ZZ`).** `XX` = roadmap version (`v01`…`v05`), `YY` = phase within it (`v01.03` → `01.03`), `ZZ` = a post-release fix on that phase. Roadmap phase `vXX.YY` → release `vXX.YY.00`, cut when the phase's issues all land and its tests are green; a fix after it bumps `ZZ`. Never bump the version without explicit confirmation. **The LLM is mocked by default in tests**, so the suite stays deterministic and free. Live model calls are **permitted** — a real key lives in `.env` (gitignored) and a live agent run is a normal way to verify the seam.
 
 ---
 
@@ -96,7 +96,7 @@ Define the **`LLMClient`** abstract seam (`generate_structured_response(prompt, 
 
 **DoD:** `create_llm_client("haiku", …)` returns a client whose `generate_structured_response` yields a validated `AgentResponse`; the agent code references only the seam; a missing API key aborts startup with a clear message.
 
-**Tests:** unit — `create_llm_client` dispatch; the client returns a parsed `AgentResponse` from a **mocked** SDK (Anthropic client patched — no paid call); malformed model output surfaces as a validation error; missing key aborts. Contract — the `LLMClient` method + `AgentResponse` schema.
+**Tests:** unit — `create_llm_client` dispatch; the client returns a parsed `AgentResponse` from a **mocked** SDK (Anthropic client patched, so the unit test costs nothing); malformed model output surfaces as a validation error; missing key aborts. Contract — the `LLMClient` method + `AgentResponse` schema.
 
 ### v02.02 — Profile, persona, memory & prompt
 
@@ -128,7 +128,7 @@ Build the CLI entrypoint and `AgentSession` ([architecture.md](architecture.md) 
 
 **DoD:** `python agent/agent.py --match-id <id> --profile profiles/aggressive.yml` joins a match and plays a full game to `game_over` against a second connection; an illegal model move is retried then falls back to a legal one; the process exits cleanly when the room closes. **v02 release gate.**
 
-**Tests:** integration — a full game driven by a **mocked** `LLMClient` (scripted moves incl. one illegal → fallback) against a real server; the agent acts only on its turn and never on the terminal `state_update`. Unit — retry/fallback logic. Zero paid calls.
+**Tests:** integration — a full game driven by a **mocked** `LLMClient` (scripted moves incl. one illegal → fallback) against a real server; the agent acts only on its turn and never on the terminal `state_update`. Unit — retry/fallback logic. The default suite makes no model call; a live run is opt-in.
 
 ---
 
@@ -200,7 +200,7 @@ The product is the *theater* ([game_specification.md](game_specification.md) §1
 
 **DoD:** running each profile produces visibly different tone and taunting; both still emit valid `{move, comment}` every turn.
 
-**Tests:** unit — both profiles load and validate; (persona quality is judged by demo, not asserted). No paid calls.
+**Tests:** unit — both profiles load and validate; (persona quality is judged by demo, not asserted). The unit tests make no model call.
 
 ### v04.02 — Arena orchestration script
 
@@ -248,7 +248,8 @@ Add integration coverage that unit mocks miss ([architecture.md](architecture.md
 - A live-server fixture (real uvicorn + real `websockets`/`TestClient`) for end-to-end games.
 - End-to-end scenarios: human-vs-agent, agent-vs-agent, observer join, disconnect/reconnect.
 - Repository suite against a temp/`:memory:` SQLite DB (`foreign_keys=ON`).
-- Confirm no test path can make a paid model call.
+- Confirm the default test path makes no model call, so CI stays free and deterministic; a live
+  end-to-end run remains available and opt-in.
 
 **DoD:** the suite runs a full match over real connections and passes deterministically and free; disconnect/observer/reconnect paths are covered; the DB layer is exercised against a throwaway database.
 

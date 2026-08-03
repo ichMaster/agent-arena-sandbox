@@ -49,7 +49,7 @@ For each finding in order:
 1. **Implement the fix** following `CLAUDE.md` + `spec/architecture.md`. Keep it minimal and focused —
    one finding, one change.
 2. **Add a regression test that would have caught the bug** (a concurrency finding gets a concurrent
-   test, a protocol finding gets a wire-level test, …). The **LLM is always mocked** — no paid call.
+   test, a protocol finding gets a wire-level test, …). The **LLM is mocked by default**; live calls are opt-in.
 3. **Validate:** `pytest` (green, deterministic) + strict `mypy`. Only commit code that passes.
 4. **Commit** one focused change referencing the finding (`fix(<area>): … (code review #N)`), with the
    `Co-Authored-By` trailer. A **seam change** (`GameInterface`/`LLMClient`/WS protocol/seat-by-token)
@@ -98,7 +98,7 @@ LOW findings untouched (with homes), final suite/typing status, and the patch ta
   consent. From an orchestrator: the orchestrator's invocation is, and both `/ship-phase` and
   `/ship-solution` sweep at every phase boundary by default. What is never implicit is the **release** —
   a `ZZ` patch still requires `--release` or an explicit confirmation (see below).
-- **One finding = one focused commit**, each with a regression test; the LLM is always mocked — no paid
+- **One finding = one focused commit**, each with a regression test; the LLM is mocked by default — no paid
   API call in any test.
 - **Green before, green after.** Start from a green baseline; only commit passing code; end with a full
   deterministic green run.

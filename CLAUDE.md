@@ -86,7 +86,10 @@ Rules that hold across all skills, either workflow:
   only when both sources are genuinely empty.
 - **One issue = one commit.** Never mix work from multiple issue IDs; never work on more than one at a time.
 - **Respect the Dependency Tree** in each issues file — don't start an issue whose dependencies aren't committed.
-- **Tests ship with the feature**, and **the LLM is always mocked** in tests — never make a paid model call in tests/validation/CI.
+- **Tests ship with the feature.** The LLM is **mocked by default** in tests so the suite stays fast,
+  deterministic and free — but live model calls are **permitted**: a real key lives in `.env`
+  (gitignored) and a live run is a normal way to verify the agent. Opt in deliberately; don't make
+  the default suite depend on the network.
 - **A seam change** (WebSocket payload schema, `GameInterface`, `LLMClient`, seat-by-token identity) **updates `spec/architecture.md` + its contract test in the same commit.**
 - If an issue's scope is ambiguous, or an issues file disagrees with the real code/specs, ask or reconcile rather than guessing.
 - `release-version`/`harden-findings` never bump the version or release without it being an explicit, confirmed step.

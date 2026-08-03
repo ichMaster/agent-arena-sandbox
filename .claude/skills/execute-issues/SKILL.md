@@ -93,7 +93,7 @@ Run validation checks (Python):
 5. **Acceptance criteria:** go through each criterion from the issue and verify against the phase DoD/Tests in `spec/roadmap.md`.
 
 Record pass/fail for each check. **Tests are part of the work.** No paid APIs in
-validation/CI: **the `LLMClient` seam is always mocked**, never a live model call.
+validation/CI: the `LLMClient` seam is **mocked by default**; a live model call is permitted but opt-in.
 
 #### 2e. Commit
 
@@ -225,7 +225,8 @@ Commit and push the report (`ARENA`-style message, with the Co-Authored-By trail
 - **Dependency order.** Never start an issue whose dependencies are not closed.
 - **Clean commits.** Each issue = one commit. No mixing work across issues.
 - **No broken code.** Only commit code that passes validation (tests + mypy).
-- **Tests ship with the feature.** Mock the `LLMClient`; never call paid APIs.
+- **Tests ship with the feature.** Mock the `LLMClient` by default so the suite stays deterministic;
+  live calls are permitted and opt-in.
 - **Server is the ultimate authority.** LLM/client output is untrusted; re-validate every move server-side. Seats keyed by per-connection token, never by name; observers never hold a seat.
 - **Core independent of interface.** `games/` and `agent/` import nothing from `server/`.
 - **Contracts stay stable.** A seam change updates `spec/architecture.md` and its contract test in the same commit.

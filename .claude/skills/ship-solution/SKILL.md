@@ -271,7 +271,7 @@ phases/total. Every number must trace to the run (execution reports, review docs
 - **Sequential and gated; stop on failure.** Any sub-skill failure or a red `pytest`/`mypy` halts the
   pipeline; report what completed and what remains, and still generate the report for the versions that
   shipped. Never release a version whose suite isn't green.
-- **Every fix ships a regression test; the LLM is always mocked** (no paid calls); the suite stays green
+- **Every fix ships a regression test; the LLM is mocked by default** (live calls opt-in); the suite stays green
   and deterministic.
 - **Delegate, never duplicate.** This skill sequences the sub-skills, gates, times, and reports — no
   other logic. Each sub-skill keeps its discipline (one issue = one commit, seam changes carry

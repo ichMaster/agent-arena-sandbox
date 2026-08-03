@@ -66,7 +66,7 @@ For each issue:
    event/action shapes, seat-by-token identity) updates `spec/architecture.md` **and** its contract
    test in the **same** commit. Strict typing; MVP-first (don't pull later phases in early).
 4. **Validate:** `pytest` (unit + contract + integration where relevant) and `mypy` (strict) — **the
-   `LLMClient` seam is always mocked; never a paid model call.** Walk each acceptance criterion against
+   `LLMClient` seam is mocked by default; a live model call is permitted but opt-in.** Walk each acceptance criterion against
    the phase DoD/Tests in `spec/roadmap.md`. Record pass/fail.
 5. **Commit** (one issue = one commit; only code that passes validation):
    ```bash
@@ -109,7 +109,7 @@ validation checklist, and next steps. Commit + push it (an `ARENA`/`docs` messag
 - **One issue = one commit.** Never mix work across IDs; never work on two issues at once.
 - **Dependency order.** Never start an issue whose file-listed dependencies aren't committed.
 - **No broken code.** Only commit what passes `pytest` + strict `mypy`.
-- **Tests ship with the feature; the LLM is always mocked** — no paid API call in tests/validation.
+- **Tests ship with the feature; the LLM is mocked by default** — no paid API call in tests/validation.
 - **Server is the ultimate authority**; `games/` and `agent/` import nothing from `server/`;
   **contracts stay stable** (seam change → `spec/architecture.md` + contract test in the same commit);
   **secrets stay in the agent's `.env`**.

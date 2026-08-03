@@ -301,7 +301,7 @@ shipped, versions skipped as already-released, anything stopped early and what r
 - **Stop on failure — do not paper over it.** If any sub-skill fails, or any fix hits a red
   `pytest`/`mypy`, halt, report what completed and what remains, and let the user decide. Never release
   a version whose suite isn't green.
-- **Every fix ships a regression test**, the LLM is always mocked (no paid calls), and the suite stays
+- **Every fix ships a regression test**, the LLM is mocked by default (live calls opt-in), and the suite stays
   green and deterministic.
 - **Surface real decisions.** Pause for an **ID/tag collision**, an **overwrite/append** prompt, a
   **held** HARDEN finding, or any execution/validation failure. Routine plan confirmations run straight

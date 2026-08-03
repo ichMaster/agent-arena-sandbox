@@ -89,7 +89,7 @@ coherent, independently shippable slice:
 - Order by dependency; the first issue is usually the **gate** (the seam/structure
   everything else builds on).
 - Map each issue to part of the phase Tasks; together they must satisfy the phase **DoD**.
-- **Bake tests into every issue** (the LLM is always mocked — no paid calls): unit for
+- **Bake tests into every issue** (the LLM is mocked by default; live calls are opt-in): unit for
   pure logic, contract for any seam, an integration turn where relevant.
 - A seam change — `GameInterface` (§4.1), `LLMClient` (§4.2), the WebSocket event/action
   protocol (§6.2), or the seat-by-token identity model (§5.2) — carries a
@@ -159,7 +159,7 @@ ARENA-{first} ({gate})
 **Acceptance criteria:**
 - [ ] {functional criterion}
 - [ ] **Contract test:** {seam pinned} — *(only if a seam changes)*
-- [ ] **Unit test:** {pure logic} with the **LLM mocked** (no paid call)
+- [ ] **Unit test:** {pure logic} with the **LLM mocked by default** (live calls opt-in)
 - [ ] {ties to the phase DoD}
 
 ---
@@ -211,7 +211,7 @@ the local issues file.)
 - **IDs are globally sequential** (`ARENA-###`), continuing across phase files **and across
   regeneration runs** — never reset. Resolve the next id from `max(GitHub, local issues files) + 1`
   (Step 0.5); starting at `ARENA-001` is correct only when both sources are genuinely empty.
-- **Tests in every issue.** Acceptance criteria include the unit/contract/integration tests; the LLM is mocked, never a paid call.
+- **Tests in every issue.** Acceptance criteria include the unit/contract/integration tests; the LLM is mocked by default; live calls are opt-in.
 - **Seam = ARCHITECTURE + test together.** Any contract change lands its `spec/architecture.md` update and contract test in the same issue.
 - **Scope to the phase.** Map issues to the phase's Tasks/DoD; don't pull later phases in early (MVP-first, simplicity-first).
 - **Honor the DoD.** The issues together must satisfy the phase DoD in roadmap §v{XX.YY}.

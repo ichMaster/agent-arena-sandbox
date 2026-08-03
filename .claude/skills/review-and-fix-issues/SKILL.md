@@ -87,7 +87,7 @@ For each **FIX NOW** finding, in criticality order:
 
 1. Implement the fix following `CLAUDE.md` + `spec/architecture.md`. Keep it minimal and in-scope.
 2. **Add a regression test that would have caught the bug** (e.g. a concurrent-path test for a race).
-   The **LLM is always mocked** — no paid call in any test.
+   The **LLM is mocked by default**; live calls are opt-in.
 3. **Validate:** `pytest` (green, deterministic) + `mypy` (strict). Only commit code that passes.
 4. **Commit** one focused change per finding, referencing the finding number
    (`fix(<area>): … (code review #N)`), with the `Co-Authored-By` trailer — **then `git push`**, the
@@ -143,7 +143,7 @@ adversarial pass (`/code-review ultra`) for confirmation.
   what was fixed and add the "Fixes applied" section rather than writing a new file.
 - **Fix only the fix-now items.** Never pull deferred or larger work forward without re-classifying and
   explaining it in the doc.
-- **Every fix ships a regression test**, and the LLM is always mocked — no paid API call in any test.
+- **Every fix ships a regression test**, and the LLM is mocked by default — no paid API call in any test.
 - **Green before, green after.** Establish a green baseline; only commit code that passes `pytest` +
   strict `mypy`; keep the suite deterministic.
 - **Record architecture deltas.** A seam/contract change updates `spec/architecture.md` and its contract

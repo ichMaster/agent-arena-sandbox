@@ -177,7 +177,7 @@ Rules:
   implementations behind `create_llm_client`. `agent/agent.py` never imports a concrete client.
 - Structured output is enforced at the client (tool-use / JSON-schema), returning a validated
   `AgentResponse`; the caller never parses raw text.
-- **Always mocked in tests** — no paid call in any test or CI run.
+- **Mocked by default in tests** so the suite is deterministic and free; live calls are permitted and opt-in.
 
 ---
 
@@ -440,8 +440,9 @@ visual design source is [ui_prototype.html](ui_prototype.html).
 - **Integration** — a real uvicorn server + real WebSocket connections exercising the full
   connect → play → `game_over` loop, including disconnect/observer paths (unit mocks miss
   connection-lifecycle bugs, e.g. the disconnect-as-cancellation case in §10).
-- **The LLM is always mocked** (`LLMClient` seam patched). No test spends model quota. Tests are
-  deterministic and free.
+- **The LLM is mocked by default** (`LLMClient` seam patched), which keeps the suite deterministic and
+  free. Live calls are permitted for manual and end-to-end verification — opt in explicitly rather
+  than letting the default suite depend on the network.
 
 ---
 
