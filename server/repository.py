@@ -199,6 +199,22 @@ class Repository:
             game.apply_move(entry.player_symbol, _as_move(entry.move))
         return game
 
+    @staticmethod
+    def turn_of(game: GameInterface) -> str | None:
+        """Whose turn it is in a game **already reconstructed**, or ``None`` if over.
+
+        Split out so a caller holding a game does not have to rebuild it just to ask
+        (``match_view`` did exactly that, replaying the move log twice per call). Both
+        this and :meth:`current_turn` go through here, so the ``None``-once-over rule
+        still lives in one place.
+        """
+        if not isinstance(game, TicTacToe):
+            raise NotImplementedError(
+                f"{type(game).__name__} defines no turn rule; add one before serving it "
+                "through current_turn (see spec/architecture.md §4.1, §6.2)"
+            )
+        return game.current_player
+
     async def current_turn(self, match_id: str) -> str | None:
         """Whose turn it is, or ``None`` once the game is over.
 
@@ -215,13 +231,7 @@ class Repository:
         no error anywhere. Failing loudly points at the one place that must be updated
         when a second game is added.
         """
-        game = await self.reconstruct_game(match_id)
-        if not isinstance(game, TicTacToe):
-            raise NotImplementedError(
-                f"{type(game).__name__} defines no turn rule; add one before serving it "
-                "through current_turn (see spec/architecture.md §4.1, §6.2)"
-            )
-        return game.current_player
+        return self.turn_of(await self.reconstruct_game(match_id))
 
     async def _taken_symbols(self, match_id: str) -> set[str]:
         result = await self._session.execute(

@@ -50,12 +50,19 @@ async def release_seat(session: AsyncSession, match_id: str, token: str) -> None
 
 
 async def match_view(session: AsyncSession, match_id: str) -> MatchView:
-    """Rebuild the client-facing view from the move log. Never cached."""
+    """Rebuild the client-facing view from the move log. Never cached.
+
+    Exactly **one** reconstruction per call: every field below is derived from the same
+    replayed game. Asking the Repository for ``current_turn`` here would rebuild it a
+    second time from the same rows for an answer that cannot differ -- and v01.04 calls
+    this once per connected socket on every move, so the waste multiplies by audience
+    size.
+    """
     repository = Repository(session)
     game = await repository.reconstruct_game(match_id)
     return MatchView(
         board=list(game.get_state().get("board", [])),
-        current_turn=await repository.current_turn(match_id),
+        current_turn=repository.turn_of(game),
         valid_moves=list(game.get_valid_moves()),
         result=game.is_game_over(),
     )

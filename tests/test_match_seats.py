@@ -18,6 +18,7 @@ from fastapi.testclient import TestClient
 from server import main, match as match_module
 from server.main import API_PREFIX, app
 from server.match import claim_seat, match_view, release_seat
+from server.repository import Repository
 
 
 @pytest.fixture
@@ -164,3 +165,49 @@ def test_every_helper_takes_a_session() -> None:
     for helper in (claim_seat, release_seat, match_view):
         first = next(iter(inspect.signature(helper).parameters))
         assert first == "session", helper.__name__
+
+
+# ── code review #1: one reconstruction per view ─────────────────────────────
+
+
+async def test_a_match_view_replays_the_move_log_exactly_once(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Counted, not asserted by inspection -- the cost is invisible in the result.
+
+    v01.04 calls match_view once per connected socket on every move, so a second
+    redundant replay multiplies by audience size on the hot path.
+    """
+    match_id = _create(client)
+    calls: list[str] = []
+    original = Repository.reconstruct_game
+
+    async def counting(self: Repository, mid: str) -> object:
+        calls.append(mid)
+        return await original(self, mid)
+
+    monkeypatch.setattr(Repository, "reconstruct_game", counting)
+
+    assert main._session_factory is not None
+    async with main._session_factory() as session:
+        await match_view(session, match_id)
+
+    assert calls == [match_id], f"expected one replay, got {len(calls)}"
+
+
+async def test_the_view_still_reports_the_turn_correctly(client: TestClient) -> None:
+    """The saving must not cost the answer."""
+    match_id = _create(client)
+    assert main._session_factory is not None
+    async with main._session_factory() as session:
+        repository = Repository(session)
+        for symbol, cell in [("X", 0), ("O", 3), ("X", 1), ("O", 4)]:
+            await repository.log_move(match_id, symbol, cell)
+        view = await match_view(session, match_id)
+        assert view.current_turn == "X"
+
+        await repository.log_move(match_id, "X", 2)  # X wins on (0,1,2)
+        finished = await match_view(session, match_id)
+        assert finished.current_turn is None
+        assert finished.result == "X"
+        assert finished.valid_moves == []
