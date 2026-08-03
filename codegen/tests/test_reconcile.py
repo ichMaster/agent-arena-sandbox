@@ -163,3 +163,44 @@ def test_commits_claimed_are_checked_against_git(isolated_runs_dir: Path) -> Non
     assert report.commits_claimed == 2
     assert report.commits_in_git == 1
     assert report.missing_in_git == ["bbb2222"]
+
+
+def test_two_events_sharing_one_commit_do_not_lower_the_rate(
+    isolated_runs_dir: Path,
+) -> None:
+    """Both sides count distinct shas.
+
+    Counting claim *events* against distinct shas in git made the rate fall whenever two
+    events legitimately shared a commit -- three issues batched into one, or a review fix
+    landing alongside its issue -- while `missing_in_git` stayed empty, so the report
+    showed a shortfall it could not explain.
+    """
+    run = _write(
+        isolated_runs_dir,
+        [
+            _event("issue.commit", scope=_issue_scope("ARENA-001"), data={"sha": "aaa1111"}),
+            _event("issue.commit", scope=_issue_scope("ARENA-002"), data={"sha": "aaa1111"}),
+            _event("issue.commit", scope=_issue_scope("ARENA-003"), data={"sha": "aaa1111"}),
+        ],
+    )
+    report = reconcile.reconcile(run, git_shas={"aaa1111"})
+    assert (report.commits_claimed, report.commits_in_git) == (1, 1)
+    assert report.commit_rate == 1.0
+    assert report.missing_in_git == []
+
+
+def test_a_genuinely_missing_commit_still_lowers_the_rate(
+    isolated_runs_dir: Path,
+) -> None:
+    """The fix must not make the check unable to fail."""
+    run = _write(
+        isolated_runs_dir,
+        [
+            _event("issue.commit", scope=_issue_scope("ARENA-001"), data={"sha": "aaa1111"}),
+            _event("issue.commit", scope=_issue_scope("ARENA-002"), data={"sha": "ghost99"}),
+        ],
+    )
+    report = reconcile.reconcile(run, git_shas={"aaa1111"})
+    assert (report.commits_claimed, report.commits_in_git) == (2, 1)
+    assert report.commit_rate == 0.5
+    assert report.missing_in_git == ["ghost99"]

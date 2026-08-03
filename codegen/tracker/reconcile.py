@@ -152,20 +152,22 @@ def reconcile(run_id: str, git_shas: set[str] | None = None) -> Report:
             issue = str(scope.get("issue") or "") or open_issue
             if issue:
                 emitted.add(issue)
-        elif etype in {"issue.commit", "finding.fixed", "harden.finding.fixed"}:
-            sha = str(data.get("sha", ""))
-            if sha:
-                report.commits_claimed += 1
-
-    report.validate_observed = len(validated)
-    report.validate_emitted = len(validated & emitted)
-    report.unemitted_issues = sorted(validated - emitted)
 
     shas_in_log = {
         str((e.get("data") or {}).get("sha", ""))
         for e in events
         if e.get("type") in {"issue.commit", "finding.fixed", "harden.finding.fixed"}
     } - {""}
+
+    # Distinct shas on both sides. Counting *events* here and distinct shas in git made
+    # the rate drop whenever two events legitimately shared one commit -- a batched
+    # issue, or a review fix landing alongside the issue it belongs to -- while
+    # `missing_in_git` stayed empty, so the report showed a shortfall it could not name.
+    report.commits_claimed = len(shas_in_log)
+
+    report.validate_observed = len(validated)
+    report.validate_emitted = len(validated & emitted)
+    report.unemitted_issues = sorted(validated - emitted)
     actual = git_shas if git_shas is not None else _git_shas()
     if actual:
         report.commits_in_git = len(shas_in_log & actual)
