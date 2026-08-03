@@ -62,7 +62,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await engine.dispose()
 
 
-app = FastAPI(title="AgentArena", version="02.01.00", lifespan=lifespan)
+app = FastAPI(title="AgentArena", version="02.02.00", lifespan=lifespan)
 
 # Local-dev convenience: the UI is served from the same origin in v03, but an agent or a
 # browser tool may not be.

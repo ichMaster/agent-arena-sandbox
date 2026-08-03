@@ -1,6 +1,21 @@
 AgentArena -- Release Notes
 ===========================
 
+Version 02.02.00 (2026-08-03)
+---------------------------
+Roadmap phase v02.02 -- Profile, persona, memory & prompt.
+
+- AgentProfile: the Agent Designer's YAML surface, validated at load. model_type
+  is checked against what create_llm_client accepts and temperature against its
+  range, so a typo fails at startup rather than mid-match.
+- MemoryWindow: the last N moves and chat messages, oldest evicted first.
+  Bounded because it feeds the prompt.
+- build_prompt: persona + memory + the pushed board and legal moves, composed
+  deterministically. The legal moves are stated explicitly.
+- profiles/aggressive.yml: the first sample persona, loaded by a test.
+
+Tests: 371 passing. mypy --strict clean.
+
 Version 02.01.00 (2026-08-03)
 ---------------------------
 Roadmap phase v02.01 -- LLMClient seam & the Anthropic Haiku client.
