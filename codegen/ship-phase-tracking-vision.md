@@ -578,8 +578,9 @@ Steps 1–3 already yield everything `ship-solution`'s end-of-run report contain
 - ~~**Unterminated spans.**~~ **Settled:** a `Stop` hook writes `run.aborted` (TRK-017), and the next
   orchestrator invocation asks whether to resume or supersede any run that slipped through
   (architecture §9.3).
-- **Cost and tokens** are not observable from inside the run. If they matter, they have to come from
-  outside — and may simply be out of scope.
+- ~~**Cost and tokens.**~~ **Settled: out of scope.** Not observable from inside a run, and decided
+  against rather than deferred — it would need an external usage source, which is a different
+  integration from everything else here. No panel, metric or event covers it.
 - **Observer effect.** Emission instructions lengthen every skill file, and skill files are prompts.
   Adding a hundred lines of tracking instruction could measurably change what gets generated. Keep
   emit instructions to one line per site, and treat any growth in skill length as a cost.

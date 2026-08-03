@@ -303,7 +303,8 @@ is independent of run length.
 
 ## 10. Out of scope
 
-Authentication (binds to localhost) · mobile-first layout (usable at 900px, not designed below it) ·
+Cost and token accounting (decided out of scope — not observable from inside a run) ·
+authentication (binds to localhost) · mobile-first layout (usable at 900px, not designed below it) ·
 editing anything from the UI (it is read-only by construction) · historical charting beyond the
 cross-run views in TRK-022 · export, print stylesheets, and i18n.
 
