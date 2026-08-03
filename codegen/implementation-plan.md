@@ -397,8 +397,8 @@ produces a real timeline.
 
 **Acceptance criteria:**
 - [ ] `ship-phase/SKILL.md` grows by ≤ 15 lines total.
-- [ ] A dry `/ship-phase v01.01` on a scratch branch produces a log whose `*.start`/`*.end` pairs
-      balance.
+- [ ] A single-version `/ship-phase v01.01` smoke check produces a log whose `*.start`/`*.end` pairs
+      balance. Cheap early catch; the full validation workload is `/ship-phase v03` (see that section).
 - [ ] The emitted plan matches the Step 0 confirmed plan, including dependency-filled versions.
 - [ ] `--no-harden` produces `harden.skipped`, not a missing event.
 
@@ -695,9 +695,43 @@ style.
 
 ---
 
+## Validation workload — `/ship-phase v03`
+
+The tracker is validated end-to-end against a **v01–v03 run**: ten versions across three phases,
+roughly fifty issues.
+
+**The command is `/ship-phase v03`.** Dependency fill adds v01 and v02 automatically, so the scope is
+named by its endpoint rather than enumerated.
+
+**Why cut at v03.** Those three phases cover **every component area the roadmap has** — `games` (pure
+logic), `server` (persistence, WS, authority), `agent` (the `LLMClient` seam), `web` (the UI). v04 is
+agent-vs-agent orchestration and v05 is hardening; both are valuable as software but introduce no new
+*area*, and the failure heatmap is version × area. So v01–v03 buys full coverage for two-thirds of the
+roadmap's runtime.
+
+**What it yields that a smaller run cannot.** One version gives five bars and no trend. Ten versions
+across three phases give velocity trends, cross-version comparison, two phase boundaries with real
+harden sweeps, a populated failure heatmap, and enough issues for `first_pass_rate` to mean something.
+It is the smallest run that makes every panel say something true.
+
+**Two practical consequences, worth planning for rather than discovering:**
+
+- **It releases ten versions with real tags.** Both orchestrators skip any version whose tag exists, so
+  a second validation run needs those tags deleted first. Decide up front whether it runs on a scratch
+  branch or on the working branch with a tag-cleanup step.
+- **It leaves the application incomplete** — no v04 orchestration, no v05 hardening. That is fine: the
+  deliverable of this run is a *log*, not a shipped app.
+
+**It also calibrates TRK-024.** Once a real run exists, the synthetic generator's presets should be
+tuned to match its actual distribution — issues per version, size mix, retry rate — so later fixtures
+stay representative instead of drifting toward whatever was convenient to invent.
+
+---
+
 ## Definition of done for the whole plan
 
-- [ ] A real `/ship-phase` run produces a complete, balanced log with no manual intervention.
+- [ ] A `/ship-phase v03` run (ten versions, three phases — see *Validation workload*) produces a
+      complete, balanced log with no manual intervention.
 - [ ] The dashboard shows that run live, from first event to release tag, meeting every criterion in
       [dashboard-specification.md](dashboard-specification.md) §11.
 - [ ] `pytest codegen/tests` green; `mypy codegen/` and `ruff check codegen/` clean.

@@ -524,6 +524,11 @@ Two readings to support directly, because they are the questions actually worth 
 One run is an anecdote. The same phase generated five times is data, and it answers the question the
 whole project exists to ask: **is generation reliably wrong in the same places?**
 
+The first such dataset is the validation workload — a `/ship-phase v03` run covering v01–v03, ten
+versions across all four component areas (see *Validation workload* in
+[implementation-plan.md](implementation-plan.md)). It is the smallest run that makes every panel here
+say something true: one version yields five bars and no trend.
+
 - **Duration variance per version across runs** — small multiples, one panel per version. Two runs
   compared directly is a dumbbell (before → after, one hue in two shades).
 - **Failure clustering — heatmap, version × area, cell = failures.** A grid of magnitudes is a heatmap
