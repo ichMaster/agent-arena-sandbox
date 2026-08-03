@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Annotated
 
 import anyio
 from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.staticfiles import StaticFiles
+from starlette.requests import Request
+from starlette.responses import Response
 
 from server import match
 from server.auth import issue_token
@@ -16,6 +20,8 @@ from server.database import async_session_maker, init_models
 from server.repository import Repository
 from server.schemas import CreateMatchResponse, HealthResponse, JoinRequest, JoinResponse
 from server.websockets import ConnectionManager
+
+_WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 
 
 @asynccontextmanager
@@ -35,6 +41,17 @@ async def get_repository() -> AsyncIterator[Repository]:
 RepositoryDep = Annotated[Repository, Depends(get_repository)]
 
 connection_manager = ConnectionManager()
+
+
+@app.middleware("http")
+async def _no_store_for_ui(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    """architecture.md §3: an edit under /ui is never masked by browser caching."""
+    response = await call_next(request)
+    if request.url.path.startswith("/ui"):
+        response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @app.get("/api/v1/health", response_model=HealthResponse)
@@ -204,3 +221,6 @@ async def _handle_submit_move(
 
     if result is not None:
         await _end_game(match_id, result)
+
+
+app.mount("/ui", StaticFiles(directory=_WEB_DIR, html=True), name="ui")
