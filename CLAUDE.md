@@ -2,68 +2,77 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Branch state — read this first
+## Repository state — read this first
 
-This branch (`Anthropic-Opus4.8-Sonet5-dev`) is a **planning seed, not an implemented codebase.**
-It was branched from `main` and currently contains only:
+This is **`ichMaster/agent-arena-sandbox`**, a standalone, independently developed repository. It has a
+single remote (`origin`) and no siblings. It was seeded from a branch of an earlier multi-model bake-off
+repo, but that link is severed — there is no `upstream`, and nothing here should be pushed anywhere else.
 
-- `spec/game_specification.md` — the product vision + MVP scope + phased plan (the single source of intent).
-- `spec/architecture.md` — the detailed technical design (module layout, seams, wire contracts, identity model).
-- `spec/roadmap.md` — the 5-version / 15-phase build plan (`vXX.YY` phases, each with Goal/Tasks/DoD/Tests).
-- `spec/web_ui_specification.md` + `spec/ui_prototype.html` — the Web UI's behavioral spec and visual design source.
-- `spec/implementation/vXX.YY-issues.md` — **already-generated**, per-phase issue breakdowns for all 15
-  phases (v01.01 → v05.03), carried over from a sibling build. Their `ARENA-OPUS-###` ids and
-  acceptance criteria describe *that* build's implementation choices — treat them as a strong draft,
-  not gospel; verify against the specs above and correct drift (see `reconcile-issues` below) before
-  executing.
-- `.claude/skills/*` — ten SDLC skills that build the repo (below).
-- `.agents/skills/*` + `.agents/AGENTS.md` — a **separate, simpler skillset** inherited from `main`
-  (Gemini-authored: `generate-issues`, `upload-issues`, `execute-issues`, `execute-all-phases`, no
-  `ARENA-OPUS` namespacing). **Do not use these for this build** — they duplicate `.claude/skills/`
-  functionality with different conventions. Use `.claude/skills/*` unless told otherwise.
-- `README.md`, `.env.example`, `.gitignore`.
+`main` holds a **complete, working implementation** of Agent Arena at **v05.03.00** (MVP complete):
+`server/`, `agent/`, `games/`, `web/`, `tests/`, `profiles/`, `scripts/`, plus `pyproject.toml`,
+`VERSION`, and `RELEASE.txt`. Baseline on a clean checkout: **226 tests pass, `mypy --strict` clean.**
 
-There is **no `server/`, `agent/`, `games/`, `web/`, `tests/`, `pyproject.toml`, or `VERSION` yet** —
-they are meant to be *generated on this branch* to build Agent Arena using Anthropic **Haiku**-powered
-game agents (per `spec/game_specification.md` §3, called `LLMClient`/`AnthropicHaikuClient` in
-`spec/architecture.md` §4.2, §7). Do not assume any module exists; check first.
+The durable assets — the things worth protecting — are **not** the application code:
 
-> **Critical rule — never copy from sibling branches.** The current siblings on this remote
-> (`ichMaster/agent-arena`) are `Anthropic-Opus4.8-dev`, `Anthropic-Gemini3.1Pro-Sonet5-dev`,
-> `Gemini-3.1Pro-dev`, `Gemini-3.1Pro-3.1Pro-dev`, `Gemini-3.1Pro-3.5Flash-dev` — each a *complete,
-> working implementation* of this same spec. The entire point of this branch is an independent build:
-> **every line of code, test, script, and config must be generated fresh in-session.** Never
-> `git checkout`, `git cherry-pick`, `git merge`, or otherwise copy files/code from another branch to
-> satisfy work here.
+- `spec/game_specification.md` — product vision + MVP scope + phased plan (the source of intent).
+- `spec/architecture.md` — technical design (module layout, seams, wire contracts, identity model).
+- `spec/roadmap.md` — the 5-version / 15-phase build plan (`vXX.YY`, each with Goal/Tasks/DoD/Tests).
+- `spec/web_ui_specification.md` + `spec/ui_prototype.html` — the Web UI's behavior and visual design.
+- `spec/implementation/vXX.YY-issues.md` — per-version issue breakdowns for all 15 versions
+  (v01.01 → v05.03), with `ARENA-OPUS-###` ids. Plus each version's `-execution-report.md` and
+  `-code-review.md`, and `ship-solution-report.md` from the run that produced the current `main`.
+- `.claude/skills/*` — ten SDLC skills that generate the repo (below).
+
+## What this project is actually for
+
+**The application is the test fixture, not the product.** The goal is to make the SDLC skills in
+`.claude/skills/` *observable*: instrument them so the process of code generation is tracked as it
+happens, and surface that as a **real-time dashboard of code-generation statistics**.
+
+Two work streams follow from that:
+
+1. **Instrument the skills** — `.claude/skills/*` currently report after the fact (`ship-solution`
+   stamps `date +%s` per version and writes one report at the end; `ship-phase` reports per phase to
+   chat). Tracking needs to be emitted *during* the run, not reconstructed afterwards.
+2. **Build the dashboard** — a live view of generation statistics. **Not built yet**; nothing in
+   `web/` serves this today (`web/` is the game's UI). Design it deliberately rather than assuming it
+   exists.
+
+Consequently: **the application code is regenerable output.** The intended cycle is to delete it and
+regenerate from `spec/` + the issues files via the skills, using each run as a subject for tracking.
+Treat `server/`, `agent/`, `games/`, `web/`, `tests/` as reproducible; treat `spec/` and
+`.claude/skills/` as the real source.
+
+> Before any regeneration run, check the **stale tags** caveat under *Versioning* — it will silently
+> skip every version otherwise.
 
 ## Two build workflows — pick one deliberately
 
-Both are available in `.claude/skills/`; they are not meant to be mixed within one version.
+Both live in `.claude/skills/`; they are not meant to be mixed within one version.
 
-**A. File-driven, offline (uses the issues files already on this branch):**
+**A. File-driven, offline (uses the issues files already in the repo):**
 `reconcile-issues vXX.YY` (correct the pre-generated issues file against the real code, in place, with
 a dated `⟳ Reconciled` mark — no code written) → `execute-issues-file vXX.YY` (implement straight from
 the file: implement → validate → commit → push per issue, dependency-ordered, **no GitHub**) →
-`review-and-fix-issues vXX.YY` → `release-version vXX.YY.00`. Orchestrated end-to-end (all phases, one
-final timed statistics report) by **`/ship-solution`**.
+`review-and-fix-issues vXX.YY` → `release-version vXX.YY.00`. Orchestrated end-to-end (all versions,
+one final timed statistics report) by **`/ship-solution`**. This is the workflow that produced the
+current `main`, and the natural default here.
 
-**B. GitHub-driven (mirrors the sibling branches' workflow):**
-`generate-issues` → `upload-issues` → `execute-issues` (implements from real GitHub issues, closes them
-as it goes) → `review-and-fix-issues` → `release-version`. Orchestrated per phase/version, with
+**B. GitHub-driven:**
+`generate-issues` → `upload-issues` → `execute-issues` (implements from real GitHub issues, closing
+them as it goes) → `review-and-fix-issues` → `release-version`. Orchestrated per phase/version, with
 per-phase chat reports and an opt-in end-of-phase hardening sweep, by **`/ship-phase`**.
 
-> **Before using workflow B on this branch:** the shared repo already holds `ARENA-OPUS-###` issues
-> and `opus-vXX.YY.ZZ` release tags from `Anthropic-Opus4.8-dev`, and plain `vXX.YY.ZZ` tags from
-> another sibling. This branch needs its **own** issue-id prefix and release-tag prefix before
-> `upload-issues`/`release-version` run for the first time — **ask the user** rather than inventing one
-> (the established pattern elsewhere is `<short-tag>-vXX.YY.ZZ`, e.g. `opus-v01.01.00`).
+> **Before using workflow B:** this repo has **no GitHub issues at all** — the `ARENA-OPUS-###` issues
+> that the issues files reference lived in the old bake-off repo and are not reachable. `upload-issues`
+> would create them fresh here. Confirm that's intended before running it.
 
 Rules that hold across all skills, either workflow:
 - **One issue = one commit.** Never mix work from multiple issue IDs; never work on more than one at a time.
 - **Respect the Dependency Tree** in each issues file — don't start an issue whose dependencies aren't committed.
 - **Tests ship with the feature**, and **the LLM is always mocked** in tests — never make a paid model call in tests/validation/CI.
 - **A seam change** (WebSocket payload schema, `GameInterface`, `LLMClient`, seat-by-token identity) **updates `spec/architecture.md` + its contract test in the same commit.**
-- If an issue's scope is ambiguous, or the pre-generated issues file disagrees with the real code/specs, ask or reconcile rather than guessing.
+- If an issue's scope is ambiguous, or an issues file disagrees with the real code/specs, ask or reconcile rather than guessing.
 - `release-version`/`harden-findings` never bump the version or release without it being an explicit, confirmed step.
 
 ## Target architecture (from `spec/game_specification.md` + `spec/architecture.md`)
@@ -108,15 +117,14 @@ persona/model/memory config into a runnable agent.
   (no serialize seam on `GameInterface`).
 - **Use strict typing in Python** throughout `games/`, `server/`, `agent/`.
 
-## Commands (once code exists)
+## Commands
 
-No build/test tooling is committed on this branch yet; these are the conventions the skills assume:
-
+- Setup: `python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"`.
 - Tests: `pytest` (repo-wide) or a single file/test, e.g. `pytest tests/test_tictactoe.py` or
   `pytest tests/test_server.py -k <expr>`.
-- Typing: `mypy` (strict; `[tool.mypy] strict = true` in `pyproject.toml` works well — no separate
-  `mypy.ini` needed).
-- Local dev deps in a `.venv/` (gitignored); server runs under `uvicorn server.main:app`.
+- Typing: `mypy games server agent` (strict via `[tool.mypy] strict = true` in `pyproject.toml` — no
+  separate `mypy.ini`).
+- Server: `uvicorn server.main:app`; UI at `http://127.0.0.1:8000/ui`.
 - **Packaging gotcha:** if `pyproject.toml` declares no `[build-system]`/`[tool.setuptools]` package
   list, `pip install -e ".[dev]"` fails with *"Multiple top-level packages discovered in a
   flat-layout"* — setuptools auto-discovers `web/`, `profiles/`, `spec/`, etc. as false package
@@ -127,8 +135,26 @@ No build/test tooling is committed on this branch yet; these are the conventions
 
 ## Versioning
 
-Strict `vXX.YY.ZZ` tied to roadmap phases: `XX` = roadmap version (v01–v05), `YY` = phase within it,
-`ZZ` = bugfix/patch on that phase. Releases are cut per **version** (`vXX.YY.00`), after that version's
-issues all land and its tests are green — **never bump the version without explicit user
-confirmation.** This branch's release-tag prefix (and, if using workflow B, its issue-id prefix) is
-**not yet chosen** — decide it with the user before the first `release-version`/`upload-issues` call.
+Strict `vXX.YY.ZZ` tied to the roadmap: `XX` = roadmap version (v01–v05), `YY` = version within it,
+`ZZ` = bugfix/patch. Releases are cut per **version** (`vXX.YY.00`), after that version's issues all
+land and its tests are green — **never bump the version without explicit user confirmation.**
+
+> **⚠️ Stale tags block regeneration.** This repo carries **63 local tags inherited from the old
+> bake-off repo** — `opus-vXX.YY.ZZ`, `opus-opus-vXX.YY.ZZ`, `opus-sonnet-vXX.YY.ZZ`, and plain
+> `vXX.YY.ZZ` — spanning several *different* builds. **None are pushed to `origin`.** Both `/ship-phase`
+> and `/ship-solution` skip any version whose release tag already exists, so a regeneration run would
+> skip essentially everything. Decide with the user whether to delete these local tags and what tag
+> prefix this repo uses going forward, **before** the first `release-version` call.
+
+## Retired conventions — do not reintroduce
+
+- **`<vendor><model>-dev` branch names** (e.g. `Anthropic-Opus4.8-Sonet5-dev`). That scheme existed to
+  keep seven parallel model-built implementations apart in a shared repo. Neither the parallel builds
+  nor the shared repo applies here. Name branches for the **work**, not the model.
+- **The "never copy from sibling branches" rule.** There are no sibling branches and no remote that
+  hosts them.
+- **The `.agents/` skillset** (a simpler, separate `generate-issues`/`upload-issues`/`execute-issues`
+  set) has been deleted. Use `.claude/skills/*`.
+- The `opus-` tag prefix and `ARENA-OPUS-###` issue namespace are **legacy** from the bake-off, still
+  hardcoded throughout `.claude/skills/*` and the issues files. They no longer prevent any collision.
+  Changing them is a deliberate, repo-wide decision — ask rather than doing it piecemeal.
