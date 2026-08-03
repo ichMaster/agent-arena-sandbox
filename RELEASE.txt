@@ -1,6 +1,29 @@
 AgentArena — Release Notes
 ===========================
 
+Version 01.04.00 (2026-08-04) — v01 release gate
+------------------------------
+- ConnectionManager: connect/disconnect/broadcast/send_to/close_room,
+  broadcast prunes a dead socket without aborting delivery to the rest
+  (ARENA-048).
+- The WS endpoint: GET /ws/match/{match_id}?token= — bad/foreign token
+  closes 4001; a valid token connects and receives joined; cleanup
+  (seat release) runs in a finally block shielded against an anyio
+  CancelScope cancellation, not just asyncio's (ARENA-049).
+- chat: persists + broadcasts chat_message; a malformed message yields
+  an error without dropping the connection (ARENA-050).
+- submit_move: the full §5.4 move-authority flow — no-seat/out-of-turn/
+  illegal moves refused via error with no state mutation; a completed
+  game broadcasts state_update (current_turn: null) then game_over,
+  then closes the room (ARENA-051).
+- Code review fix: chat messages now bounded to 500 characters
+  (previously unbounded, and — unlike v01.03's player_name finding —
+  actually broadcast live to every connected client).
+- 99 tests passing, mypy --strict clean across games/server/agent.
+- v01 — Game Core & Server Foundation — is now complete: the engine,
+  persistence, lobby REST, and the full WebSocket protocol with
+  server-validated move authority.
+
 Version 01.03.00 (2026-08-04)
 ------------------------------
 - IssuedToken, issue_token/validate_token — the token is the participants
