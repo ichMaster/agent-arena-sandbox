@@ -105,6 +105,11 @@ The tracking instrumentation and the dashboard are **not built yet**. Today the 
 after the fact: `/ship-phase` reports once per phase to chat, `/ship-solution` stamps a timestamp per
 version and writes a single report at the end. Neither emits anything consumable during a run.
 
-The design for changing that is in
-[codegen/ship-phase-tracking-vision.md](codegen/ship-phase-tracking-vision.md) — the event model, where
-the instrumentation points are in each skill, and the build order.
+The design for changing that lives in `codegen/`:
+
+- [ship-phase-tracking-vision.md](codegen/ship-phase-tracking-vision.md) — the problem, the event
+  model, where the instrumentation points are in each skill, and what the dashboard renders.
+- [architecture.md](codegen/architecture.md) — the contracts: event schema, log format and its
+  concurrency rules, the emitter's never-raise guarantee, redaction, and the test strategy.
+- [dashboard/prototype.html](codegen/dashboard/prototype.html) — a self-contained working prototype
+  of the dashboard, with mock data shaped to the event schema.

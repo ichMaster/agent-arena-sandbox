@@ -1,7 +1,9 @@
 # Tracking `/ship-phase` — design vision
 
 **Status:** proposal. Nothing described here is built yet.
-**Scope:** how to make a `/ship-phase` run observable while it runs, and what to render from it.
+**Scope:** how to make a `/ship-phase` run observable while it runs, and what to render from it — the
+problem, the event model, and the panels. The contracts that implement it (event schema, log format,
+concurrency, redaction, tests) are in **[architecture.md](architecture.md)**.
 
 ---
 
@@ -143,7 +145,6 @@ inward.
 
 ```json
 {
-  "seq": 147,
   "ts": "2026-08-03T14:22:31.482Z",
   "run_id": "run-20260803-142012",
   "type": "issue.validate.end",
@@ -157,9 +158,13 @@ inward.
 }
 ```
 
-`seq` is a monotonic counter — it orders events even when timestamps collide. `scope` is the path
-through the tree, so any event can be attributed without parsing what came before. `status` is one of
-`ok` / `fail` / `skip` / `held`.
+`scope` is the path through the tree, so any event can be attributed without parsing what came
+before. `status` is one of `ok` / `fail` / `skip` / `held`.
+
+Ordering is **file line order**, assigned as `seq` by the reducer on read — emitters are independent
+processes with no shared counter, so no writer can know its own sequence number. Full envelope,
+per-type `data` requirements, and the append/concurrency contract are in
+**[architecture.md](architecture.md) §2 and §4**.
 
 ### Event types
 
