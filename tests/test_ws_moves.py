@@ -215,7 +215,14 @@ async def test_a_refused_move_writes_nothing(client: TestClient) -> None:
             assert _next(x)["event"] == "state_update"
 
 
-def test_a_move_after_the_game_is_over_is_refused(client: TestClient) -> None:
+def test_a_move_into_a_finished_match_is_refused(client: TestClient) -> None:
+    """Reached by reconnecting, since ARENA-017 closes the room the moment it ends.
+
+    The original form of this test sent a move on the same socket after game_over.
+    That is no longer reachable -- close_room is a stronger guarantee than a refusal --
+    so the check moved to the path a client can still take: coming back to a match that
+    is already decided.
+    """
     match_id = _match(client)
     x_token, o_token = _join(client, match_id, "X"), _join(client, match_id, "O")
     with client.websocket_connect(f"/ws/match/{match_id}?token={x_token}") as x:
@@ -225,9 +232,15 @@ def test_a_move_after_the_game_is_over_is_refused(client: TestClient) -> None:
             for sender, cell in [(x, 0), (o, 3), (x, 1), (o, 4), (x, 2)]:
                 _send(sender, cell)
                 _next(x), _next(o)
-            _send(o, 5)
-            message = _next(o)
+            _next(x)  # game_over
+
+    with client.websocket_connect(f"/ws/match/{match_id}?token={o_token}") as o:
+        joined = _next(o)
+        assert joined["payload"]["current_turn"] is None
+        _send(o, 5)
+        message = _next(o)
     assert message["event"] == "error"
+    assert message["payload"]["detail"] == "this game is over"
 
 
 # -- persistence -----------------------------------------------------------

@@ -22,6 +22,8 @@ from server.repository import Repository
 from server.websockets import (
     ACTION_CHAT,
     ACTION_SUBMIT_MOVE,
+    EVENT_CHAT_MESSAGE,
+    EVENT_GAME_OVER,
     EVENT_STATE_UPDATE,
     ConnectionManager,
     SocketLike,
@@ -102,7 +104,7 @@ async def handle_submit_move(
         ),
     )
 
-    # 6. game_over and close_room arrive with ARENA-017.
+    # 6. Result last, and only after the board that produced it.
     if result is not None:
         await announce_game_over(manager, match_id, result)
 
@@ -125,8 +127,14 @@ def _state_payload(view: MatchView, last_move: dict[str, Any] | None) -> dict[st
 async def announce_game_over(
     manager: ConnectionManager, match_id: str, result: str
 ) -> None:
-    """Overridden in ARENA-017 to broadcast `game_over` and close the room."""
-    return None
+    """Announce the result, then close the room.
+
+    Strictly **after** the terminal ``state_update``: a client that saw the result
+    before the board that produced it would render an outcome for a position it has not
+    been shown. Closing last means nobody is still connected to a finished match.
+    """
+    await manager.broadcast(match_id, event(EVENT_GAME_OVER, result=result))
+    await manager.close_room(match_id)
 
 
 async def handle_chat(
@@ -137,5 +145,34 @@ async def handle_chat(
     payload: dict[str, Any],
     websocket: SocketLike,
 ) -> None:
-    """Chat arrives with ARENA-017."""
-    await manager.send_to(websocket, error_event("action not available: chat"))
+    """Persist and broadcast one chat message.
+
+    Chat is **non-authoritative flavour** (§6.2): it never touches game state, so
+    observers may post as freely as players -- watching a match and saying nothing is
+    not the point of an arena. What is bounded is the text itself, so one client cannot
+    broadcast unbounded data to the room.
+    """
+    raw = payload.get("message")
+    if not isinstance(raw, str):
+        await manager.send_to(websocket, error_event("message must be text"))
+        return
+    message = raw.strip()
+    if not message:
+        await manager.send_to(websocket, error_event("message must not be empty"))
+        return
+    if len(message) > MAX_CHAT_LENGTH:
+        await manager.send_to(
+            websocket, error_event(f"message must be at most {MAX_CHAT_LENGTH} characters")
+        )
+        return
+
+    repository = Repository(session)
+    participant = await repository.get_participant(token)
+    sender = participant.player_name if participant is not None else "unknown"
+
+    await repository.log_chat(match_id, sender, message)
+    await session.commit()
+
+    await manager.broadcast(
+        match_id, event(EVENT_CHAT_MESSAGE, sender=sender, message=message)
+    )
