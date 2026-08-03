@@ -9,6 +9,7 @@ import argparse
 import asyncio
 import json
 import os
+import random
 import sys
 from typing import Any
 
@@ -21,6 +22,8 @@ from agent.memory import MemoryWindow
 from agent.profile import AgentProfile
 from agent.prompt import build_prompt
 from agent.schemas import AgentResponse
+
+MAX_MOVE_ATTEMPTS = 3
 
 
 class AgentSession:
@@ -102,9 +105,21 @@ class AgentSession:
         await ws.send(json.dumps({"action": "submit_move", "payload": {"move": move}}))
 
     async def decide_move(self, prompt: str, valid_moves: list[int]) -> tuple[int, str]:
-        """Stub: accepts the model's first answer. ARENA-060 adds retry/fallback."""
-        response = await self.llm_client.generate_structured_response(prompt, AgentResponse)
-        return response.move, response.comment
+        """Re-prompt on an illegal move up to MAX_MOVE_ATTEMPTS; fall back to a random
+        legal move on exhaustion rather than stalling the match (architecture.md §7.1)."""
+        for attempt in range(1, MAX_MOVE_ATTEMPTS + 1):
+            response = await self.llm_client.generate_structured_response(prompt, AgentResponse)
+            if response.move in valid_moves:
+                return response.move, response.comment
+            print(
+                f"[{self.player_name}] illegal move {response.move} "
+                f"(attempt {attempt}/{MAX_MOVE_ATTEMPTS}), retrying",
+                flush=True,
+            )
+
+        fallback = random.choice(valid_moves)
+        print(f"[{self.player_name}] out of attempts, falling back to {fallback}", flush=True)
+        return fallback, "..."
 
 
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
