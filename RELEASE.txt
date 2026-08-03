@@ -1,6 +1,26 @@
 AgentArena — Release Notes
 ===========================
 
+Version 03.02.00 (2026-08-04)
+------------------------------
+- renderBoard: draws marks and toggles playable/disabled per cell,
+  now checking valid_moves directly (not just cell emptiness);
+  initPlayerCards/updateActiveCard render the two player cards and
+  highlight whichever matches the current turn.
+- handleCellClick: guarded on socket state, active game, and the
+  cell's own disabled attribute before sending submit_move — no
+  optimistic rendering.
+- handleGameOver: freezes every cell and shows the result; routeEvent's
+  error case now surfaces payload.detail instead of a no-op.
+  isGameActive resets to true at the start of every new match in the
+  same tab (a regression web_ui_specification.md §7 names explicitly).
+- Code review fix: renderBoard's playability check now matches
+  web_ui_specification.md §4.2 exactly (valid_moves, not an
+  emptiness proxy that only happened to coincide for TicTacToe).
+- 162 tests passing (excluding one separately-tracked, pre-existing
+  intermittent flake in the v02.03 live-server integration test,
+  deferred to v05.02), mypy --strict clean across games/server/agent.
+
 Version 03.01.00 (2026-08-04)
 ------------------------------
 - server/main.py: static mount at /ui (StaticFiles) with a
