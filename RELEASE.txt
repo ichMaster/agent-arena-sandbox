@@ -1,6 +1,22 @@
 AgentArena — Release Notes
 ===========================
 
+Version 01.02.00 (2026-08-03)
+------------------------------
+- Async SQLite engine, session maker & init_models, with a connect-time
+  PRAGMA foreign_keys=ON listener (ARENA-040).
+- The four ORM tables (matches, participants, moves, chat_messages) with
+  UNIQUE(match_id, symbol) on participants (ARENA-041).
+- Repository: create_match, get_match, add_participant, assign_symbol (the
+  full §5.2 seat rule, keyed by token never name), release_seat, log_move,
+  log_chat (ARENA-042).
+- reconstruct_game & current_turn: live state derived by replaying the move
+  log through TicTacToe, verified across win/draw and a simulated process
+  restart (ARENA-043).
+- Code review fix: assign_symbol now retries on a concurrent seat-assignment
+  conflict instead of raising IntegrityError.
+- 52 tests passing, mypy --strict clean across games/server/agent.
+
 Version 01.01.00 (2026-08-03)
 ------------------------------
 - Repo skeleton & packaging: pyproject.toml (strict mypy, pytest config, explicit
