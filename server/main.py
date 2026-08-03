@@ -6,28 +6,39 @@ it arrives as WebSocket events (§6.2), which land in v01.04.
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Annotated
+from typing import Annotated, Any
 
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from server.auth import issue_token
+from server.auth import issue_token, validate_token
 from server.database import (
     create_engine,
     create_session_factory,
     init_models,
     session_scope,
 )
+from server.match import claim_seat, match_view, release_seat
 from server.repository import Repository
 from server.schemas import (
     CreateMatchResponse,
     HealthResponse,
     JoinRequest,
     JoinResponse,
+)
+from server.websockets import (
+    CLOSE_INVALID_TOKEN,
+    EVENT_JOINED,
+    ConnectionManager,
+    error_event,
+    event,
+    parse_action,
 )
 
 API_PREFIX = "/api/v1"
@@ -78,6 +89,14 @@ async def get_session() -> AsyncIterator[AsyncSession]:
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
 
 
+#: The one in-memory structure in the server (§10). Touched only from the event loop.
+manager = ConnectionManager()
+
+#: Strong references to in-flight seat releases, so the loop cannot garbage-collect a
+#: cleanup that is still running after its connection was torn down.
+_pending_cleanups: set[asyncio.Task[None]] = set()
+
+
 @app.get(f"{API_PREFIX}/health", response_model=HealthResponse)
 async def health() -> HealthResponse:
     return HealthResponse(status="ok")
@@ -111,3 +130,129 @@ async def join_match(request: JoinRequest, session: SessionDep) -> JoinResponse:
         is_spectator=request.spectator,
     )
     return JoinResponse(token=token, is_spectator=request.spectator)
+
+
+# -- the WebSocket endpoint (§6.2, §10) ------------------------------------
+
+
+async def _open_session() -> AsyncSession:
+    if _session_factory is None:  # pragma: no cover - only reachable outside lifespan
+        raise RuntimeError("application is not started; lifespan did not run")
+    return _session_factory()
+
+
+async def _joined_payload(
+    session: AsyncSession, match_id: str, symbol: str | None, seat_available: bool
+) -> dict[str, Any]:
+    """The `joined` event's payload.
+
+    ``seat_available`` is what distinguishes an **observer** (who never gets a seat)
+    from a **player who arrived at a full match** (v01.03 review #3). Both carry
+    ``symbol: null``, and without this a client cannot tell "I am watching by choice"
+    from "I wanted to play and there was no room".
+    """
+    view = await match_view(session, match_id)
+    return {
+        "symbol": symbol,
+        "board": view.board,
+        "current_turn": view.current_turn,
+        "valid_moves": view.valid_moves,
+        "seat_available": seat_available,
+    }
+
+
+@app.websocket("/ws/match/{match_id}")
+async def match_socket(websocket: WebSocket, match_id: str, token: str = "") -> None:
+    """Connect, announce, then serve actions until the socket goes away.
+
+    Cleanup lives in a ``finally`` block, never only on ``WebSocketDisconnect``: with a
+    DB session open a client-initiated drop can surface as an async **cancellation**
+    instead (§10), and only ``finally`` releases the seat on both paths. A seat that is
+    not released is a seat nobody can ever take again.
+    """
+    session = await _open_session()
+    try:
+        issued = await validate_token(session, token)
+        if issued is None or issued.match_id != match_id:
+            # Refused before accepting, so no half-open connection is ever registered.
+            await websocket.close(code=CLOSE_INVALID_TOKEN)
+            return
+
+        await websocket.accept()
+        symbol = None if issued.is_spectator else await claim_seat(session, match_id, token)
+        await session.commit()
+
+        await manager.connect(match_id, websocket, token)
+        await manager.send_to(
+            websocket,
+            event(
+                EVENT_JOINED,
+                **await _joined_payload(
+                    session, match_id, symbol, seat_available=not issued.is_spectator
+                ),
+            ),
+        )
+
+        await _serve(websocket, session, match_id, token)
+    finally:
+        manager.disconnect(match_id, websocket)
+        cleanup = _release_seat_detached(match_id, token)
+        if cleanup is not None:
+            try:
+                await asyncio.shield(cleanup)
+            except asyncio.CancelledError:
+                # We are being cancelled, but the shielded task is not: it finishes the
+                # release on its own session. Re-raise so cancellation still propagates.
+                raise
+            except Exception:  # noqa: BLE001 - cleanup must never mask the real error
+                pass
+        with contextlib.suppress(Exception):
+            await session.close()
+
+
+def _release_seat_detached(match_id: str, token: str) -> asyncio.Task[None] | None:
+    """Release the seat on a **fresh** session, in a task of its own.
+
+    Both halves are needed, and §10 only hints at the second.
+
+    A client-initiated drop surfaces as a cancellation, and a cancelled task cannot
+    ``await`` anything more -- so cleanup written inline in ``finally`` is itself
+    cancelled before it can commit, and the seat leaks. Running it as a separate task
+    that the caller ``shield``s lets it finish even as the connection unwinds.
+
+    The session is fresh because the connection's own session is being torn down with
+    it; reusing it means the release fails on a closing connection.
+    """
+    if _session_factory is None:  # pragma: no cover - only outside lifespan
+        return None
+
+    async def run() -> None:
+        with contextlib.suppress(Exception):
+            async with _session_factory() as session:
+                await release_seat(session, match_id, token)
+                await session.commit()
+
+    task = asyncio.create_task(run())
+    _pending_cleanups.add(task)
+    task.add_done_callback(_pending_cleanups.discard)
+    return task
+
+
+async def _serve(
+    websocket: WebSocket, session: AsyncSession, match_id: str, token: str
+) -> None:
+    """Receive loop. A bad frame is an `error` event, never the end of the connection."""
+    while True:
+        try:
+            raw = await websocket.receive_text()
+        except WebSocketDisconnect:
+            return
+        parsed = parse_action(raw)
+        if parsed is None:
+            await manager.send_to(websocket, error_event("unrecognised message"))
+            continue
+        action, _payload = parsed
+        # submit_move lands in ARENA-016 and chat in ARENA-017. Until then a
+        # well-formed action is refused rather than silently ignored -- a client that
+        # got no reply at all could not tell the server from a dropped frame.
+        await manager.send_to(websocket, error_event(f"action not available: {action}"))
