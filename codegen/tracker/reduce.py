@@ -177,6 +177,7 @@ class _Accumulator:
         self.root = Node(id="run", kind="run")
         self.nodes: dict[tuple[str, ...], Node] = {(): self.root}
         self.run_data: dict[str, Any] = {}
+        self.run_id: str = ""
         self.estimate: dict[str, Any] | None = None
         self.status = "running"
         self.started: str | None = None
@@ -252,6 +253,19 @@ class _Accumulator:
         if family == "run" and tail != "start":
             return
         path = self._path(scope)
+
+        # Only a lifecycle transition may *create* a node. Anything else updates one
+        # that already exists, or is ignored.
+        #
+        # issue.uploaded is the case that forced this: upload-issues emits it scoped to
+        # step=upload-issues, where no issue node was ever opened. Materializing one
+        # left every uploaded issue permanently "running" under the upload step -- they
+        # have no start and no end, so they never closed and their elapsed grew forever.
+        # Being the deepest nodes in the tree, they then captured the header's "now"
+        # line, which reported already-finished uploads instead of the real work.
+        if tail != "start" and tail not in CLOSERS and path not in self.nodes:
+            return
+
         node = self._ensure(path)
 
         if tail == "start":
@@ -272,6 +286,10 @@ class _Accumulator:
 
     def _on_run_start(self, e: Evt, s: Evt, d: Evt, ts: str) -> None:
         self.run_data = d
+        # run_id lives in the envelope, never in data -- reading it from `d` yielded ""
+        # for every run. The dashboard happened to mask that by overwriting the field
+        # after reducing, so only the other consumers saw the blank.
+        self.run_id = str(e.get("run_id") or "")
         self.started = ts
         self.plan = list(d.get("plan") or [])
         self._sample(ts)
@@ -383,7 +401,7 @@ class _Accumulator:
             if node.kind == "issue" and node.end
         ]
 
-        state.run_id = str(self.run_data.get("run_id", "")) or ""
+        state.run_id = self.run_id
         state.command = str(self.run_data.get("command", ""))
         state.plan = list(self.run_data.get("plan") or [])
         state.started = self.started

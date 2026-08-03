@@ -354,3 +354,78 @@ def _decomposed_issues(state: reduce_mod.State) -> list[dict[str, Any]]:
                 for issue in step.get("children") or []:
                     out.append({"size": (issue.get("data") or {}).get("size", "M")})
     return out
+
+
+# ── only lifecycle transitions build the tree ────────────────────────────────
+
+
+def _uploaded_line(issue: str) -> str:
+    """One issue.uploaded, scoped to the upload step exactly as upload-issues emits it."""
+    return json.dumps(
+        {
+            "v": 1,
+            "ts": "2026-08-03T14:25:00.000Z",
+            "run_id": gen_log.RUN_ID,
+            "type": "issue.uploaded",
+            "emitter": "skill:upload-issues",
+            "scope": {
+                "phase": "v01",
+                "version": "v01.01",
+                "step": "upload-issues",
+                "issue": issue,
+            },
+            "status": "ok",
+            "data": {"issue": issue, "gh_number": 1, "url": "http://x/1"},
+        }
+    )
+
+
+def test_issue_uploaded_does_not_open_a_node() -> None:
+    """A non-lifecycle event must never materialize a node.
+
+    issue.uploaded is scoped to step=upload-issues, where no issue node is ever
+    opened. Creating one gave it no start and no end, so it stayed "running" for the
+    rest of the run.
+    """
+    lines = gen_log.preset("clean-run").splitlines() + [_uploaded_line("ARENA-901")]
+    state = reduce_mod.reduce(lines, NOW)
+
+    def walk(nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
+        for node in nodes:
+            out.append(node)
+            out.extend(walk(node.get("children") or []))
+        return out
+
+    assert not [n for n in walk(state.tree) if n["id"] == "ARENA-901"]
+
+
+def test_a_phantom_node_cannot_capture_the_now_line() -> None:
+    """The header's "now" must name real work, not a finished upload.
+
+    Phantom issue nodes sit at the deepest path in the tree, so before the fix they
+    outranked every genuinely running node.
+    """
+    lines = gen_log.preset("clean-run").splitlines() + [_uploaded_line("ARENA-902")]
+    state = reduce_mod.reduce(lines, NOW)
+    assert "ARENA-902" not in (state.current or "")
+
+
+def test_uploaded_issues_are_still_counted() -> None:
+    """Dropping the node must not drop the metric it feeds."""
+    base = gen_log.preset("clean-run").splitlines()
+    before = reduce_mod.reduce(base, NOW)
+    after = reduce_mod.reduce(base + [_uploaded_line("ARENA-903")], NOW)
+    assert after.github["created"] == before.github["created"] + 1
+
+
+# ── the run id comes off the envelope ────────────────────────────────────────
+
+
+def test_run_id_is_read_from_the_envelope() -> None:
+    """It lives on the envelope, never in data -- reading `data` yielded "" always.
+
+    The dashboard overwrote the field after reducing, so the blank only showed up in
+    every other consumer.
+    """
+    assert _reduce("clean-run").run_id == gen_log.RUN_ID
