@@ -1,6 +1,6 @@
 ---
 name: ship-phase
-description: Full delivery pipeline over the roadmap. Takes one selector or a comma-separated LIST of phases/versions/ranges (e.g. v01,v03.02,v04-v05), expanded and de-duplicated into a single roadmap-ordered plan. For each phase (vXX) run its versions (vXX.YY) in order - RECONCILE with the real implementation, generate-issues, upload-issues, execute-issues, review-and-fix-issues, release-version vXX.YY.00 (release per VERSION). At the END of the phase, an OPT-IN HARDEN sweep (--harden flag or explicit user approval) fixes the deferred HIGH/MEDIUM findings, then the phase is reported to chat. Gated; stops on failure; surfaces real decisions.
+description: Full delivery pipeline over the roadmap. Takes one selector or a comma-separated LIST of phases/versions/ranges (e.g. v01,v03.02,v04-v05). The list names TARGETS - missing prerequisite versions are added automatically, the set is de-duplicated, sorted into roadmap dependency order, and already-released versions are skipped. For each phase (vXX) run its versions (vXX.YY) in order - RECONCILE with the real implementation, generate-issues, upload-issues, execute-issues, review-and-fix-issues, release-version vXX.YY.00 (release per VERSION). At the END of the phase, an OPT-IN HARDEN sweep (--harden flag or explicit user approval) fixes the deferred HIGH/MEDIUM findings, then the phase is reported to chat. Gated; stops on failure; surfaces real decisions.
 ---
 
 # Skill: Ship Phase — the full delivery pipeline
@@ -20,7 +20,8 @@ end-of-phase** step, never automatic.
 **The loop:**
 
 ```
-PLAN = selectors → versions → de-duplicated → sorted into roadmap order → grouped by phase
+PLAN = selectors → versions → de-duplicated → + missing prerequisites → sorted into
+       roadmap dependency order → minus already-released → grouped by phase
 
 for each PHASE vXX in PLAN (in roadmap order):
     for each VERSION vXX.YY of that phase in PLAN (in order):
@@ -67,6 +68,12 @@ comma-separated list of any mix** — the whole list is expanded into a single o
 Whitespace around commas is ignored, so `v01, v03` works. `--harden` applies to **every** phase in the
 plan; there is no per-phase form.
 
+> **The list is a target, not the whole plan.** Missing prerequisites are **added automatically** — the
+> roadmap is cumulative, so `/ship-phase v03` plans v01 and v02 as well, and `/ship-phase v01,v03` fills
+> in the v02 you left out. Anything already released is then skipped, so on a repo built up to v05.02,
+> `/ship-phase v05.03` still does exactly one version's work. You name the destination; the skill works
+> out what has to happen to get there.
+
 ## Instructions
 
 ### Step 0: Scope, baseline, and the phase → version plan
@@ -77,49 +84,62 @@ plan; there is no per-phase form.
 2. **Expand to a version set.** Read [spec/roadmap.md](../../../spec/roadmap.md) and resolve every
    selector down to individual versions (`### vXX.YY` headings under `## vXX`, in file order):
    a phase → all its versions; a range → all versions of all phases it spans; a version → itself.
-   Then:
-   - **De-duplicate.** Overlapping selectors (`v01,v01.02`) contribute each version once.
-   - **Sort into roadmap order**, regardless of the order given. `/ship-phase v03,v01` ships v01 first.
-     This is not cosmetic: the pipeline's whole premise is that each version is generated against the
-     previous one's real, released code, so executing out of roadmap order would reconcile against a
-     codebase that doesn't exist yet.
-   - **If the sorted order differs from what was typed, say so** in the plan confirmation — the user
-     asked for one order and is getting another.
-   - **Group the versions back under their phases** for the per-phase HARDEN and reporting.
-3. **Check the plan for gaps.** A list may legitimately skip versions (`v01,v03` omits all of v02), but
-   a skipped version is a dependency hole: v03's issues reconcile against code v02 never wrote. Before
-   confirming, **list the omitted versions explicitly and flag the gap** — then let the user decide.
-   A gap is a warning, never a silent reorder or a refusal. Versions already shipped (step 5) are not
-   gaps; they are satisfied dependencies.
-4. **Reject nothing silently.** If a selector doesn't resolve to a real roadmap phase/version — a typo,
+   **De-duplicate** — overlapping selectors (`v01,v01.02`) contribute each version once.
+3. **Close the set under its dependencies — add every version the plan needs but the user didn't
+   name.** The roadmap is strictly cumulative: v03 (Web UI) cannot be built without v01's engine and
+   server or v02's agent. So take the **highest** version in the set and add **every roadmap version
+   that precedes it** and isn't already there. Missing prerequisites are executed, not warned about.
+   - `/ship-phase v03` → plans v01.01 … v03.03, not just v03's three versions.
+   - `/ship-phase v01,v03` → the omitted v02.01–v02.03 are filled in.
+   - `/ship-phase v05.03` → plans the whole roadmap up to and including v05.03.
+
+   This is safe precisely because of step 7: any filled-in version that is **already shipped** (its
+   release tag exists) is skipped, so on a repo that is built up to v05.02, `/ship-phase v05.03` still
+   does exactly one version's work. On an empty repo the same command correctly builds everything.
+   **Report the added versions** at confirmation — the user gets more than they asked for and should
+   see it — but do not ask permission for them; they are requirements, not scope creep.
+4. **Sort into roadmap order and group by phase.** The set is a *set*, never a running order.
+   `/ship-phase v03,v01` ships v01 first. This is not cosmetic: the pipeline's premise is that each
+   version is generated against the previous one's real, released code, so executing out of roadmap
+   order would reconcile against a codebase that doesn't exist yet. **If the resulting order differs
+   from what was typed, say so** at confirmation. Group the versions back under their phases for the
+   per-phase HARDEN and reporting.
+5. **Reject nothing silently.** If a selector doesn't resolve to a real roadmap phase/version — a typo,
    an out-of-range `v09`, a reversed range (`v03-v01`) — name the offending element and ask. Never drop
    an unparseable element and proceed with the rest.
-5. Confirm we are on the working dev branch and the tree is clean; establish a **green baseline**
+6. Confirm we are on the working dev branch and the tree is clean; establish a **green baseline**
    (`pytest` + strict `mypy`). Never start on a red suite — fix a clear flake first or surface it.
-6. **Skip already-shipped versions** (release tag `vXX.YY.00` exists). A version partially done
+7. **Skip already-shipped versions** (release tag `vXX.YY.00` exists). This is what keeps step 3's
+   dependency fill cheap: prerequisites that are already built cost nothing. A version partially done
    (issues/report exist but no tag) resumes from its remaining steps — each sub-skill is idempotent
    (`generate` asks overwrite, `upload` dedupes, `execute` skips closed issues, `release` refuses a
    downgrade).
-7. **Confirm the plan once** — show it as the resolved, ordered version list grouped by phase, with any
-   reordering, gaps, or already-shipped skips called out. Then run: do not re-confirm before each
-   sub-step; pause only for the genuine blockers in the rules below.
+8. **Confirm the plan once** — show it as the resolved, ordered version list grouped by phase, with the
+   dependency fill, any reordering, and already-shipped skips called out. Then run: do not re-confirm
+   before each sub-step; pause only for the genuine blockers in the rules below.
 
-**Worked example** — `/ship-phase v03.02,v01,v01.02 --harden`:
+**Worked example** — `/ship-phase v03.02,v01 --harden`, on a repo where v01 is already released:
 
 ```
-selectors : v03.02 · v01 · v01.02
-expanded  : v03.02 | v01.01 v01.02 v01.03 v01.04 | v01.02
-de-duped  : v01.02 appears twice → once
-ordered   : v01.01 → v01.02 → v01.03 → v01.04 → v03.02      (typed order was v03 first)
+selectors : v03.02 · v01
+expanded  : v03.02 | v01.01 v01.02 v01.03 v01.04
+de-duped  : (no overlap)
+filled    : + v02.01 v02.02 v02.03 v03.01     ← prerequisites of v03.02, not named by the user
+ordered   : v01.01 → v01.02 → v01.03 → v01.04 → v02.01 → v02.02 → v02.03 → v03.01 → v03.02
+shipped?  : v01.01–v01.04 tagged already → skipped
 
-PLAN
-  v01  v01.01, v01.02, v01.03, v01.04   → HARDEN (pre-approved) → report
-  v03  v03.02                            → HARDEN (pre-approved) → report
+PLAN (5 versions to run)
+  v02  v02.01, v02.02, v02.03    → HARDEN (pre-approved) → report
+  v03  v03.01, v03.02            → HARDEN (pre-approved) → report
 
-⚠ reordered: v03.02 was listed first, but ships last — roadmap order is required.
-⚠ gaps: all of v02 (v02.01–v02.03) and v03.01 are not in the plan. v03.02's issues will
-  reconcile against code those versions never wrote. Proceed?
+ℹ filled in v02.01–v02.03 and v03.01: v03.02 cannot build without them.
+ℹ reordered: v03.02 was listed first, ships last — roadmap order is required.
+ℹ skipped v01.01–v01.04: already released.
 ```
+
+Note what the fill did **not** cost: v01 was named by the user but is already shipped, so it drops out;
+v02 and v03.01 were never named but are genuinely missing, so they run. The plan is the *work actually
+required*, not the literal argument.
 
 ### Step 1: For each phase → for each version — the five steps, gated
 
@@ -216,6 +236,10 @@ shipped, versions skipped as already-released, anything stopped early and what r
   `ARENA-###` namespace, releases use unprefixed `vXX.YY.ZZ` tags, every line generated fresh.
 - **Ask on a bad target.** If **any** element of the selector list doesn't resolve to a real roadmap
   phase/version, name that element and ask — never silently drop it and ship the rest.
-- **The plan is roadmap-ordered, always.** A selector list is a *set* of versions, not a running order.
-  Sort it, de-duplicate it, and surface both the reordering and any dependency gaps at confirmation
-  time. Honoring a user-supplied order over roadmap order would break the reconcile premise.
+- **The plan is roadmap-ordered and dependency-complete, always.** A selector list is a *set* of target
+  versions, not a running order and not the full scope. De-duplicate it, **add every missing version
+  that precedes the highest one selected**, sort into roadmap order, then drop the already-shipped.
+  Surface the fill, the reordering, and the skips at confirmation — but the fill is not optional and is
+  not asked about: those versions are requirements. Honoring a user-supplied order, or executing a plan
+  with dependency holes, would break the reconcile premise that each version builds on the last one's
+  real released code.
