@@ -193,14 +193,15 @@ function showError(detail) {
   }
 }
 
-// Appends one chat bubble, styled by sender (web_ui_specification.md §4.4): the
-// message whose sender equals this client's own seat symbol renders as "you"
-// (left/blue, agent-x); everyone else renders right/pink (agent-o).
+// Appends one chat bubble, styled by sender: the server broadcasts chat_message.sender
+// as the participant's player_name (server/main.py's _handle_chat), never the seat
+// symbol, so self-detection compares against myPlayerName — the exact value this
+// client sent as player_name at join (code review #1, v03.03).
 function renderChat(sender, message) {
   const messages = document.getElementById("messages");
   if (!messages) return;
 
-  const isSelf = sender === mySymbol;
+  const isSelf = sender === myPlayerName;
   const wrapper = document.createElement("div");
   wrapper.className = `msg ${isSelf ? "agent-x" : "agent-o"}`;
 
