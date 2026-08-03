@@ -180,6 +180,19 @@ ARENA-{first} ({gate})
 - Generated on upload: `v{XX.YY}-github-report.md` (ARENA-### → GitHub #), then `v{XX.YY}-execution-report.md`.
 ````
 
+### Step 2.5: Emit `version.decomposed`
+
+Once the issues file is written, emit `version.decomposed` with every issue id and its `size`:
+`python3 -m tracker.emit version.decomposed --emitter skill:generate-issues --scope
+phase=vXX,version=vXX.YY --status ok --data '{"issues":[{"id":"ARENA-001","size":"M"},...]}'`.
+
+This is the instant total scope changes (architecture §3.2). Everything that shows progress —
+burn-down, ETA, issues done — depends on distinguishing before from after it.
+
+**Do not read any estimate before decomposing.** The orchestrator's `run.estimate` is a projection for
+the burn-down; if it reached this skill the decomposition would be told how many issues to produce, and
+the estimate-versus-actual comparison would measure nothing but its own suggestion.
+
 ### Step 3: Report
 
 Show the user: the file path, the issue count, the `ARENA-###` id range, and the

@@ -151,6 +151,12 @@ After all issues are created, generate `spec/implementation/v{XX.YY}-github-repo
 - v{XX.YY}::area:{list}
 ```
 
+### Step 5.5: Emit tracking events
+
+After each `gh issue create`, emit `issue.uploaded` with the ARENA id, `gh_number` and `url`
+(`--emitter skill:upload-issues --scope phase=..,version=..,step=upload-issues,issue=ARENA-###`).
+This is what makes GitHub issues created/closed/open countable at all.
+
 ### Step 6: Report to user
 
 Show the user: total issues created, link to the GitHub issues page, path to the

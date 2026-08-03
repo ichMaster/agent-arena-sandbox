@@ -124,6 +124,7 @@ resolved by line order, which is exactly what `seq` was meant to provide.
 | `step.*`, `gate.*` | `phase`, `version`, `step` |
 | `issue.*` | `phase`, `version`, `step`, `issue` |
 | `finding.*`, `harden.*` | `phase`, `version` (+ `finding` id in `data`) |
+| `tool.*` | *(none — hooks attribute best-effort)* |
 | `release.*` | `phase`, `version` |
 
 An event whose scope omits a required key is **malformed** and is quarantined by the reducer (§5.3),
@@ -168,6 +169,7 @@ not silently repaired.
 | `harden.skipped` | skip | `reason` (`--no-harden`) |
 | `harden.finding.fixed` | ok | `finding`, `sha` |
 | `harden.finding.held` | held | `finding`, `reason` |
+| `tool.used` | ok/fail | `tool` — hook-observed; scope is best-effort (§7) |
 | `release.tagged` | ok | `tag` |
 | `release.pushed` | ok | `tag`, `remote` |
 

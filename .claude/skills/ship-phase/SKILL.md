@@ -224,6 +224,16 @@ branch and its tag), so this is a check rather than new work — but it is the c
 guarantee real. This skill **stops on failure by design**, so halting mid-version is a normal outcome,
 not an edge case: a stop must never strand a version's work on one machine.
 
+### Step 1.5: TRACKING — emit as you go
+
+Emit one event per transition: `python3 -m tracker.emit <type> --emitter skill:ship-phase --scope
+k=v,... [--status ok|fail|skip] [--data '{...}']`. It never raises and never blocks, so a tracking
+failure cannot fail a step (architecture §5.2). Sites: Step 0 → `run.start` (plan, baseline, git), or
+`run.resumed` when resuming; Step 0.5 → `run.estimate`; per phase → `phase.start`/`phase.end`; per
+version → `version.start`/`version.end`/`version.skipped`; per sub-skill → `step.start`/`step.end`; a
+blocked gate → `gate.blocked`; the end → `run.end`. `--no-harden` still emits `harden.skipped` — a
+missing event and a skipped sweep must never look alike.
+
 ### Step 2: END OF PHASE — HARDEN (default; `--no-harden` to skip)
 
 When the phase's last version is released, sweep the deferred 🔴 HIGH / 🟠 MEDIUM findings accumulated

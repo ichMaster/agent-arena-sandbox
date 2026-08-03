@@ -115,6 +115,15 @@ Edit the doc **in place**:
 Commit the doc update (a `docs:` commit) **and push**. This skill must leave nothing unpushed — it is
 followed by `release-version`, but a run that stops here would otherwise strand every fix locally.
 
+### Step 4.5: Emit tracking events
+
+Per finding, via `--emitter skill:review-and-fix-issues --scope phase=..,version=..`: Step 2 →
+`finding.raised` (`finding`, `severity`, `title`) then `finding.classified` (`disposition`); Step 3 →
+`finding.fixed` (`sha`) for each fix-now item; deferred ones → `finding.deferred` (`home`).
+
+Counts must match this document's own summary table — the review doc and the log are two records of
+one review, and a discrepancy between them means one of the two is wrong.
+
 ### Step 5: Report
 
 Summarize: findings by severity; which were **fixed** (with commits) and which **deferred** (with

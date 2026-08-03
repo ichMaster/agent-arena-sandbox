@@ -114,6 +114,11 @@ git push origin "v<version>"
 > reachable from `main`'s history — either flag would publish another build's entire release history
 > alongside this release. Push the one tag by name.
 
+### Step 6.5: Emit tracking events
+
+`--emitter skill:release-version --scope phase=..,version=..`: after the tag → `release.tagged`
+(`tag`); after the push → `release.pushed` (`tag`, `remote`).
+
 ### Step 7: Report
 
 ```

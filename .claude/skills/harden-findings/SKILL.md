@@ -74,6 +74,15 @@ landing isn't possible.
    `01.04.01`, tag `v01.04.01`). Otherwise just recommend the command and stop — releasing stays
    explicit.
 
+### Step 2.5: Emit tracking events
+
+`--emitter skill:harden-findings --scope phase=..,version=..`: on entry → `harden.start`; each landed
+fix → `harden.finding.fixed` (`finding`, `sha`); each escape-hatch hold → `harden.finding.held`
+(`finding`, `reason`). When an orchestrator skips the sweep it emits `harden.skipped` itself.
+
+Which sweep closed a finding is the point: if hardening keeps fixing HIGH findings that review
+deferred, the fix-now/defer classification is miscalibrated — a fact about the skills.
+
 ### Step 3: Report to chat
 
 Summarize: findings fixed (severity, commit each), findings **held** via the escape hatch (with why),

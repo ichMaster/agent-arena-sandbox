@@ -178,6 +178,7 @@ per-type `data` requirements, and the append/concurrency contract are in
 | Issue | `issue.start` · `issue.uploaded` · `issue.implement.end` · `issue.validate.end` · `issue.commit` · `issue.closed` · `issue.failed` · `issue.reverted` · `issue.end` |
 | Review | `finding.raised` · `finding.classified` · `finding.fixed` · `finding.deferred` |
 | Harden | `harden.start` · `harden.skipped` (`--no-harden`) · `harden.finding.fixed` · `harden.finding.held` |
+| Tool | `tool.used` — emitted by hooks, the deterministic floor |
 | Release | `release.tagged` · `release.pushed` |
 
 `gate.blocked` deserves emphasis: `ship-phase`'s gates are its whole contribution as an orchestrator,

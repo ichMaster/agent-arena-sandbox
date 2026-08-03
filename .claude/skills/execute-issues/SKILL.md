@@ -138,6 +138,20 @@ EOF
 )"
 ```
 
+#### 2g-bis. Emit tracking events
+
+One line per site, via `python3 -m tracker.emit <type> --emitter skill:execute-issues --scope
+phase=..,version=..,step=execute-issues,issue=ARENA-### [...]`. 2a → `issue.start` (`size`, `area`);
+after upload → `issue.uploaded` (`gh_number`, `url`); 2c → `issue.implement.end`; 2d →
+`issue.validate.end` (`attempt`, parsed `pytest` and `mypy` counts — on a parse failure emit with
+`null` counts and `data.parse_error` rather than skipping the event); 2e → `issue.commit`; 2g →
+`issue.closed`; end of loop → `issue.end` (`attempts`).
+
+**Step 3's failure path is the one that matters.** Emit `issue.failed` (with a classified `reason`:
+`test-failure` / `type-error` / `import-error` / `timeout` / `other`) and then `issue.reverted`
+**before** `git checkout -- .` runs. After the revert there is no commit, no file and no trace — this
+event is the *only* record that the attempt happened, which is the whole reason this system exists.
+
 #### 2h. Log progress
 
 Append to the in-memory execution log: issue ID + title, commit hash, files changed,

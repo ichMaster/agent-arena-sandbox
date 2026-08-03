@@ -21,7 +21,8 @@
     "issue": ["phase", "version", "step", "issue"],
     "finding": ["phase", "version"],
     "harden": ["phase", "version"],
-    "release": ["phase", "version"]
+    "release": ["phase", "version"],
+    "tool": []
   },
 
   "events": {
@@ -62,6 +63,8 @@
     "harden.skipped":       { "data": ["reason"] },
     "harden.finding.fixed": { "data": ["finding", "sha"] },
     "harden.finding.held":  { "data": ["finding", "reason"] },
+
+    "tool.used":            { "data": ["tool"] },
 
     "release.tagged":       { "data": ["tag"] },
     "release.pushed":       { "data": ["tag", "remote"] }

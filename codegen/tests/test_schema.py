@@ -61,6 +61,7 @@ SAMPLE: dict[str, Any] = {
     "disposition": "fix-now",
     "home": "v05.01",
     "remote": "origin",
+    "tool": "Bash",
 }
 
 
