@@ -9,11 +9,22 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import uuid
+from pathlib import Path
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Annotated, Any
 
-from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect, status
+from fastapi import (
+    Depends,
+    FastAPI,
+    HTTPException,
+    Request,
+    Response,
+    WebSocket,
+    WebSocketDisconnect,
+    status,
+)
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -43,6 +54,9 @@ from server.websockets import (
 )
 
 API_PREFIX = "/api/v1"
+
+#: The Web UI is served from here, with no build step (architecture.md §3, §8).
+WEB_ROOT = Path(__file__).resolve().parent.parent / "web"
 
 #: Set during lifespan so tests and the WS layer share one engine per process.
 _session_factory: async_sessionmaker[AsyncSession] | None = None
@@ -97,6 +111,20 @@ manager = ConnectionManager()
 #: cleanup that is still running after its connection was torn down. Keyed by token so a
 #: reconnect can wait for its own previous release instead of racing it.
 _pending_cleanups: dict[str, asyncio.Task[None]] = {}
+
+
+@app.middleware("http")
+async def no_store_for_ui(request: Request, call_next: Any) -> Response:
+    """`Cache-Control: no-store` on /ui/* only.
+
+    Without it a browser serves stale JS and CSS, and an edit appears to do nothing --
+    the single most confusing failure mode in a no-build UI. Scoped to /ui so the API
+    keeps normal caching behaviour.
+    """
+    response: Response = await call_next(request)
+    if request.url.path.startswith("/ui"):
+        response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @app.get(f"{API_PREFIX}/health", response_model=HealthResponse)
@@ -278,3 +306,7 @@ async def _serve(
         await handle_action(
             manager, session, match_id, token, action, payload, websocket
         )
+
+
+# Mounted last so it cannot shadow /api/v1/* or /ws/* (architecture.md §3).
+app.mount("/ui", StaticFiles(directory=WEB_ROOT, html=True), name="ui")
