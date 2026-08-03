@@ -12,6 +12,8 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from games.interface import GameInterface
+from games.tictactoe import TicTacToe
 from server.models import ChatMessage, Match, Move, Participant
 
 _SYMBOLS = ("X", "O")
@@ -77,3 +79,23 @@ class Repository:
     async def log_chat(self, match_id: str, sender: str, message: str) -> None:
         self.session.add(ChatMessage(match_id=match_id, sender=sender, message=message))
         await self.session.commit()
+
+    async def reconstruct_game(self, match_id: str) -> GameInterface:
+        """Replay the move log through a fresh TicTacToe. No board state is stored."""
+        result = await self.session.execute(
+            select(Move).where(Move.match_id == match_id).order_by(Move.id)
+        )
+        game: GameInterface = TicTacToe()
+        for move_row in result.scalars().all():
+            game.apply_move(move_row.player_symbol, json.loads(move_row.move))
+        return game
+
+    async def current_turn(self, match_id: str) -> str | None:
+        """Derived from move-count parity; None once the game is over."""
+        result = await self.session.execute(select(Move).where(Move.match_id == match_id))
+        move_count = len(result.scalars().all())
+
+        game = await self.reconstruct_game(match_id)
+        if game.is_game_over() is not None:
+            return None
+        return "X" if move_count % 2 == 0 else "O"
