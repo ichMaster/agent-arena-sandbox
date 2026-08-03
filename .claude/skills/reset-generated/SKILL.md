@@ -100,7 +100,7 @@ echo "== tags this run cut =="
 jq -r 'select(.type=="release.tagged") | .data.tag' codegen/runs/*/events.jsonl | sort -u
 echo "== build residue =="
 find . -type d \( -name __pycache__ -o -name '*.egg-info' -o -name .pytest_cache \
-     -o -name .mypy_cache \) -prune -not -path './codegen/*' -not -path './.venv/*' \
+     -o -name .mypy_cache -o -name .ruff_cache \) -prune -not -path './codegen/*' -not -path './.venv/*' \
      -not -path './.git/*'
 find . -maxdepth 1 -name '*.db'
 echo "== present but no run claims them -- LEFT ALONE =="
@@ -120,7 +120,7 @@ Only with `--apply` **and** the user's confirmation:
 ```bash
 while IFS= read -r f; do rm -f -- "$f"; done < /tmp/reset-delete.txt
 find . -type d \( -name __pycache__ -o -name '*.egg-info' -o -name .pytest_cache \
-     -o -name .mypy_cache \) -prune -not -path './codegen/*' -not -path './.venv/*' \
+     -o -name .mypy_cache -o -name .ruff_cache \) -prune -not -path './codegen/*' -not -path './.venv/*' \
      -not -path './.git/*' -exec rm -rf {} +
 find . -maxdepth 1 -name '*.db' -delete
 jq -r 'select(.type=="release.tagged") | .data.tag' codegen/runs/*/events.jsonl \
