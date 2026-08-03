@@ -115,9 +115,11 @@ the plan; there is no per-phase form.
    (issues/report exist but no tag) resumes from its remaining steps — each sub-skill is idempotent
    (`generate` asks overwrite, `upload` dedupes, `execute` skips closed issues, `release` refuses a
    downgrade).
-8. **Confirm the plan once** — show it as the resolved, ordered version list grouped by phase, with the
-   dependency fill, any reordering, and already-shipped skips called out. Then run: do not re-confirm
-   before each sub-step; pause only for the genuine blockers in the rules below.
+8. **Estimate the work** — see **Step 0.5** below. Produces an approximate issue count, size mix and
+   duration per planned version, so progress has something to be measured against from minute one.
+9. **Confirm the plan once** — show it as the resolved, ordered version list grouped by phase, with the
+   dependency fill, any reordering, already-shipped skips, **and the Step 0.5 estimate**. Then run: do
+   not re-confirm before each sub-step; pause only for the genuine blockers in the rules below.
 
 **Worked example** — `/ship-phase v03.02,v01`, on a repo where v01 is already released:
 
@@ -141,6 +143,35 @@ PLAN (5 versions to run)
 Note what the fill did **not** cost: v01 was named by the user but is already shipped, so it drops out;
 v02 and v03.01 were never named but are genuinely missing, so they run. The plan is the *work actually
 required*, not the literal argument.
+
+### Step 0.5: ESTIMATE the work — before anything is generated
+
+Nothing in the plan yet says *how big* it is. `generate-issues` has not run, so no version's issue count
+exists. Without an estimate the burn-down has no total, the ideal line has no endpoint, and the ETA is
+blank until the first version finishes — which on a five-version run is a long time to show nothing.
+
+So: **estimate now, from the roadmap alone.** For each version in the plan (skipping already-released
+ones), read its `### vXX.YY` section and estimate three things:
+
+| Estimate | How |
+|---|---|
+| **Issue count** | Anchor on the version's **Tasks** list — `generate-issues` turns tasks into coherent slices, so a version with N tasks tends toward N issues. Clamp to the 3–7 band that skill produces. Give a low/high, not a point. |
+| **Size mix** | From the Tasks + DoD: work touching a seam (`GameInterface`, `LLMClient`, WS protocol, seat identity) skews **M/L**; additive work inside an existing module skews **S/M**. Convert to points (S=1, M=3, L=5) — the burn-down is size-weighted, so counts alone are not enough. |
+| **Duration** | Points × the observed mean seconds-per-point from previous runs if any exist; otherwise state the assumed rate explicitly so the number is auditable rather than magic. |
+
+Emit **`run.estimate`** carrying per-version and total figures, then show them in the Step 0
+item 9 confirmation, as a range.
+
+> **⚠️ The estimate must never be given to `generate-issues`.** It is a projection for the burn-down and
+> the ETA — not a target, not a quota, and not an input to decomposition. If the estimate reached the
+> decomposer, it would become self-fulfilling: the run would produce roughly the predicted number of
+> issues and the comparison would measure nothing but its own suggestion. **The estimate and the actual
+> are expected to differ, and that difference is a measurement worth having** — it is how well the
+> roadmap predicts its own decomposition. Keep them independent so the number stays honest.
+
+When a version is later decomposed, the difference is recorded automatically (`version.decomposed`
+carries the real issue list; the reducer compares it to this estimate). A consistent bias in one
+direction is a finding about the roadmap or the decomposer, not noise to be tuned away.
 
 ### Step 1: For each phase → for each version — the five steps, gated
 

@@ -100,9 +100,11 @@ per-phase form.
 7. **Start the run clock:** capture `RUN_START=$(date +%s)`. Keep a **running stats table** as you go
    (append each version's row as it finishes to **`.ship-solution-progress.md`** in the repo root — it
    is gitignored — so a long run never loses a measurement).
-8. **Confirm the plan once** — show the resolved, ordered version list grouped by phase, with the
-   dependency fill, any reordering, and already-released skips called out. Then run: don't re-confirm
-   each sub-step; pause only for the blockers in the rules.
+8. **Size the work** — see **Step 0.5** below. Unlike `/ship-phase`, issue counts here are **counted,
+   not estimated**; only duration is projected.
+9. **Confirm the plan once** — show the resolved, ordered version list grouped by phase, with the
+   dependency fill, any reordering, already-released skips, **and the Step 0.5 sizing**. Then run:
+   don't re-confirm each sub-step; pause only for the blockers in the rules.
 
 **Worked example** — `/ship-solution v03.02,v01`, on a repo where v01 is released and every version
 has an issues file:
@@ -126,6 +128,24 @@ PLAN (5 versions to run)
 
 Had `v02.02` lacked an issues file, the run would **stop at Step 0.4** rather than skipping it — v03.02
 depends on it, and this skill cannot generate the file.
+
+### Step 0.5: SIZE the work — counted here, not estimated
+
+`/ship-phase` has to *estimate* issue counts because `generate-issues` has not run yet. **This skill
+does not.** Step 0.4 already established that every planned version has a
+`spec/implementation/vXX.YY-issues.md` — otherwise the run stopped — so the issues exist and can simply
+be **counted**.
+
+1. **Count issues per version** from each file's Issues Summary Table, and read each issue's **Size**
+   (S/M/L) from the same row. Convert to points (S=1, M=3, L=5).
+2. **Estimate duration only.** Points × observed mean seconds-per-point from previous runs if any
+   exist; otherwise state the assumed rate explicitly so the projection is auditable.
+3. Emit **`run.estimate`** with `source: "counted"`, carrying per-version counts, points and the
+   duration projection.
+
+> **The burn-down for a `/ship-solution` run therefore has no scope-uncertainty band** — total work is
+> known at t=0 and only the *time* axis is projected. That is a real difference from `/ship-phase`, not
+> an omission: reconcile-issues may still mark an issue moot, but it never invents new ones.
 
 ### Step 1: For each phase → for each version — timed, gated
 

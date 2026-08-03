@@ -173,6 +173,7 @@ per-type `data` requirements, and the append/concurrency contract are in
 | Run | `run.start` · `run.end` · `run.aborted` |
 | Phase | `phase.start` · `phase.end` |
 | Version | `version.start` · `version.decomposed` · `version.end` · `version.skipped` |
+| Estimate | `run.estimate` — once, before anything is decomposed |
 | Step | `step.start` · `step.end` · `gate.blocked` |
 | Issue | `issue.start` · `issue.uploaded` · `issue.implement.end` · `issue.validate.end` · `issue.commit` · `issue.closed` · `issue.failed` · `issue.reverted` · `issue.end` |
 | Review | `finding.raised` · `finding.classified` · `finding.fixed` · `finding.deferred` |
@@ -269,6 +270,8 @@ doesn't belong on the dashboard.
 | Current node (phase / version / step / issue) | latest `*.start` with no matching `*.end` |
 | Versions done / planned · issues done / planned | `version.end` count vs the Step 0 plan |
 | **Work remaining** — as a *range*, not a number | see "scope is discovered" below |
+| **Estimated total**, from the plan alone | `run.estimate` — gives the burn-down a t=0 total |
+| **Estimate accuracy** — signed error per version, and run bias | `version.decomposed` actual vs `run.estimate` |
 | **Estimated time to finish (ETA)** | see the model below |
 | Elapsed per node, and total | `*.end.ts − *.start.ts`; live nodes use `now − start` |
 | Versions skipped as already-released | `version.skipped` |
@@ -282,9 +285,13 @@ So there is no honest "17 of 22 issues". There is:
 
 ```
 known      issues from versions already decomposed        ← a fact
-estimated  3–7 per version not yet decomposed             ← a range, from the roadmap
-           (once ≥1 version is decomposed, use the observed mean instead)
+estimated  from run.estimate, made once from the roadmap  ← a range, made before any
+           Tasks list, before anything was decomposed        version was decomposed
 ```
+
+The orchestrator makes that estimate in its own step, before execution starts, so the burn-down has a
+total from minute one instead of drawing nothing until the first version lands. **`/ship-solution` does
+not estimate at all** — its issues files already exist, so it counts.
 
 Every progress display carries both, and **no display collapses them into one number**. "15 done ·
 17 known · 20–24 projected" is honest; "15 / 22" is a guess wearing the costume of a fact.
@@ -432,6 +439,11 @@ Two layers:
 
 That inversion is the point: the chart opens by showing how little it knows and earns precision as it
 runs. A single confident line from a made-up total would be the lie.
+
+> **The estimate is expected to be wrong, and that is the point.** It is never fed to
+> `generate-issues` — if it were, the decomposer would be told how many issues to produce and the
+> comparison would measure only its own suggestion. Each `version.decomposed` records the signed error;
+> a consistent bias across versions is a finding about the roadmap or the decomposer, not noise.
 
 > **Why the line is the projection and not the known-work figure.** Plotting *only* known remaining is
 > the more obvious reading of "show the facts", and it is wrong: known work drops to **zero at every

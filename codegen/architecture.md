@@ -98,6 +98,7 @@ not silently repaired.
 | Type | status | `data` (required) |
 |---|---|---|
 | `run.start` | — | `command`, `plan` (ordered version ids), `baseline` `{tests,mypy_errors}`, `git` `{branch,head_sha,remote}` |
+| `run.estimate` | — | `source` (`estimated`\|`counted`), `versions` `[{id,issues_low,issues_high,points_low,points_high,duration_s}]`, `total`, `rate_basis` |
 | `run.end` | ok/fail | `versions_done`, `issues_done` |
 | `run.aborted` | fail | `reason` |
 | `phase.start` | — | — |
@@ -107,7 +108,7 @@ not silently repaired.
 | `version.skipped` | skip | `reason` (`already-released`) |
 | `step.start` | — | — |
 | `step.end` | ok/fail | — |
-| `version.decomposed` | ok | `issues` (ids + `size`) — **the moment scope becomes known**, see §3.1 |
+| `version.decomposed` | ok | `issues` (ids + `size`) — **the moment scope becomes known**, see §3.2 |
 | `issue.uploaded` | ok | `issue`, `gh_number`, `url` |
 | `issue.closed` | ok | `issue`, `gh_number` |
 | `gate.blocked` | fail | `gate`, `reason` |
@@ -132,7 +133,31 @@ not silently repaired.
 **Pairing rule.** Every `*.start` has exactly one matching `*.end` / `*.skipped` / `*.aborted` in the
 same scope. An unmatched `*.start` means the run died mid-node (§9.2).
 
-### 3.1 Scope is discovered, not declared
+### 3.1 The estimate, and why it must stay independent
+
+`run.estimate` is emitted once, immediately after the plan is confirmed and **before any version is
+decomposed**. It gives the burn-down a total at t=0 and the ETA a value before the first version
+finishes — otherwise both are blank for the first several minutes of a run.
+
+`source` distinguishes the two orchestrators, and the difference is real:
+
+- **`/ship-phase` → `estimated`.** Issues do not exist yet, so counts are inferred from each version's
+  roadmap Tasks list. Carries genuine uncertainty; the burn-down draws the band.
+- **`/ship-solution` → `counted`.** Every planned version already has an issues file (its Step 0.4
+  guarantees it), so counts are read, not guessed. `issues_low == issues_high`, and the burn-down has
+  **no scope band** — only the time axis is projected.
+
+> **The estimate is never an input to `generate-issues`.** If it were, the decomposer would be told how
+> many issues to produce and the comparison would measure nothing but its own suggestion. Estimate and
+> actual are *expected* to diverge; keeping them independent is what makes the divergence informative.
+
+**Estimate accuracy** is therefore a derived metric, not an event: at each `version.decomposed` the
+reducer compares the real issue count and points against this event's figures, and records signed
+error per version plus a run-level bias. A consistent one-directional bias is a finding about the
+roadmap or the decomposer — the kind of thing this project exists to surface. It is never used to
+correct the estimate mid-run, which would destroy the measurement.
+
+### 3.2 Scope is discovered, not declared
 
 The plan on `run.start` lists **versions**, not issues — because issue counts do not exist yet.
 `generate-issues` decomposes one version at a time into 3–7 issues, so a version's issue count is
@@ -269,7 +294,7 @@ scope is undecomposed (vision §6.1), so the reducer emits those fields rather t
 invent confidence. `eta` is `null` until at least one `version.end` exists.
 
 **`scope` is a range, never a scalar.** `known` counts issues from versions already decomposed;
-`est_low`/`est_high` add the estimated remainder for versions that are not (§3.1). There is
+`est_low`/`est_high` add the estimated remainder for versions that are not (§3.2). There is
 deliberately no `issues_planned` field — a single number there would be a guess wearing the costume
 of a fact, and every consumer would render it as certain.
 

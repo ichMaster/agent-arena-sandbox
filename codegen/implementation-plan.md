@@ -40,6 +40,7 @@ These are settled here so no task has to re-litigate them.
 | 9 | TRK-009 | `state.json` writer + rebuild CLI | S | 2 | TRK-006 |
 | 10 | TRK-010 | Instrument `ship-phase` spine | M | 3 | TRK-005 |
 | 11 | TRK-011 | `version.decomposed` in `generate-issues` | S | 3 | TRK-010 |
+| 23 | TRK-023 | Estimate/size step in both orchestrators | M | 3 | TRK-010 |
 | 12 | TRK-012 | Instrument `execute-issues` — issue lifecycle | M | 4 | TRK-010 |
 | 13 | TRK-013 | Instrument the failure path | M | 4 | TRK-012 |
 | 14 | TRK-014 | GitHub issue events (`uploaded` / `closed`) | S | 4 | TRK-012 |
@@ -335,9 +336,39 @@ produces a real timeline.
 
 ---
 
+### TRK-023 — Estimate/size step in both orchestrators
+
+**Description:** Give the burn-down and the ETA a total before anything is decomposed. `ship-phase`
+Step 0.5 *estimates* (issues do not exist yet); `ship-solution` Step 0.5 *counts* (its issues files do).
+
+**Implementation:**
+- `ship-phase`: per planned version, anchor the issue count on the roadmap **Tasks** list clamped to
+  the 3–7 band `generate-issues` produces; infer a size mix (seam work skews M/L, additive work S/M);
+  convert to points (S=1, M=3, L=5); project duration from prior runs' seconds-per-point, or state the
+  assumed rate. Emit `run.estimate` with `source: "estimated"` and low/high per version.
+- `ship-solution`: read counts and sizes straight from each issues file's summary table. Emit
+  `run.estimate` with `source: "counted"`, `issues_low == issues_high`, and only duration projected.
+- Reducer: at each `version.decomposed`, record signed error vs the estimate and a run-level bias.
+- **Do not pass the estimate to `generate-issues`** — architecture §3.1.
+
+**Dependencies:** TRK-010
+
+**Acceptance criteria:**
+- [ ] `run.estimate` is emitted exactly once per run, before any `version.decomposed`.
+- [ ] `ship-phase` yields `source: "estimated"` with `issues_low < issues_high`; `ship-solution` yields
+      `source: "counted"` with them equal.
+- [ ] `generate-issues` receives no estimate: a grep of its invocation confirms no count is passed, and
+      the produced issue count differs from the estimate on at least one version of a real run.
+- [ ] Estimate accuracy appears per version in `state.json` as a signed error, plus a run-level bias.
+- [ ] With no prior runs, the assumed seconds-per-point rate is stated in `rate_basis` rather than
+      silently assumed.
+- [ ] A `/ship-solution` burn-down shows **no scope band** — only the time axis is projected.
+
+---
+
 ### TRK-011 — `version.decomposed` in `generate-issues`
 
-**Description:** The event that makes scope discovery visible (architecture §3.1).
+**Description:** The event that makes scope discovery visible (architecture §3.2).
 
 **Implementation:** Emit at `generate-issues` Step 2, after the issues file is written, carrying every
 issue id with its `size`. This is the instant total scope changes.
