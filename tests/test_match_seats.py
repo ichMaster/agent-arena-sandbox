@@ -42,9 +42,16 @@ def _join(client: TestClient, match_id: str, name: str, spectator: bool = False)
 
 
 async def _seat(match_id: str, token: str) -> str | None:
+    """Claim a seat in its own transaction.
+
+    The Repository flushes but never commits (ARENA-014), so the caller owns the
+    boundary -- here that is one session per claim, exactly as a WS action will be.
+    """
     assert main._session_factory is not None
     async with main._session_factory() as session:
-        return await claim_seat(session, match_id, token)
+        symbol = await claim_seat(session, match_id, token)
+        await session.commit()
+        return symbol
 
 
 # -- the seat rule, end to end --------------------------------------------
@@ -110,6 +117,7 @@ async def test_releasing_a_seat_frees_it(client: TestClient) -> None:
     assert main._session_factory is not None
     async with main._session_factory() as session:
         await release_seat(session, match_id, a)
+        await session.commit()
     assert await _seat(match_id, c) == "X"
 
 

@@ -213,9 +213,11 @@ async def test_losing_the_seat_race_returns_a_seat_not_an_error(
     """
     await repo.add_participant("t1", "m1", "A")
     await repo.add_participant("t2", "m1", "B")
+    await repo._session.commit()  # the rival session must be able to see them
 
     async with session_factory() as other:
         assert await Repository(other).assign_symbol("m1", "t2") == "X"
+        await other.commit()
 
     _stale_first_read(repo, monkeypatch)
     assert await repo.assign_symbol("m1", "t1") == "O"
@@ -229,11 +231,13 @@ async def test_losing_the_race_for_the_last_seat_returns_none(
     """When the match fills while we lose, the answer is None -- still not an error."""
     for token in ("t1", "t2", "t3"):
         await repo.add_participant(token, "m1", token)
+    await repo._session.commit()
 
     async with session_factory() as other:
         rival = Repository(other)
         assert await rival.assign_symbol("m1", "t2") == "X"
         assert await rival.assign_symbol("m1", "t3") == "O"
+        await other.commit()
 
     _stale_first_read(repo, monkeypatch)
     assert await repo.assign_symbol("m1", "t1") is None
@@ -247,9 +251,11 @@ async def test_the_race_never_persists_two_identical_seats(
     """The constraint is what makes recovery safe: no double seat may ever land."""
     await repo.add_participant("t1", "m1", "A")
     await repo.add_participant("t2", "m1", "B")
+    await repo._session.commit()
 
     async with session_factory() as other:
         await Repository(other).assign_symbol("m1", "t2")
+        await other.commit()
 
     _stale_first_read(repo, monkeypatch)
     await repo.assign_symbol("m1", "t1")

@@ -2,6 +2,16 @@
 
 No handler runs ad-hoc SQL. Everything -- matches, seats, the move log, chat -- goes
 through here, so the identity rule in §5.2 has exactly one place to live.
+
+**The caller owns the transaction.** These methods ``flush`` -- they never ``commit``.
+Committing per method made every write its own transaction, so a request that failed
+partway left its earlier writes behind: a join that errored after ``add_participant``
+stranded a participant row holding a seat nobody could use. It also made the move
+authority flow impossible to write correctly, since logging a move and marking the match
+finished have to land together or not at all (§5.4 step 4).
+
+The one place that still rolls back is the seat race, and it does so inside a
+**savepoint** -- rolling back the session there would discard the caller's other work.
 """
 
 from __future__ import annotations
@@ -42,7 +52,7 @@ class Repository:
 
     async def create_match(self, match_id: str, game_type: str = "tictactoe") -> None:
         self._session.add(Match(match_id=match_id, game_type=game_type))
-        await self._session.commit()
+        await self._session.flush()
 
     async def get_match(self, match_id: str) -> Match | None:
         """``None`` for an unknown match -- the caller turns that into a 404 at join."""
@@ -65,7 +75,7 @@ class Repository:
                 symbol=None,
             )
         )
-        await self._session.commit()
+        await self._session.flush()
 
     async def get_participant(self, token: str) -> Participant | None:
         result = await self._session.execute(
@@ -107,11 +117,13 @@ class Repository:
         for symbol in SEATS:
             if symbol in taken:
                 continue
-            participant.symbol = symbol
             try:
-                await self._session.commit()
+                async with self._session.begin_nested():
+                    participant.symbol = symbol
+                    await self._session.flush()
             except IntegrityError:
-                await self._session.rollback()
+                # Savepoint, not session rollback: the caller may have written other
+                # things in this transaction that losing a seat race must not undo.
                 return await self._seat_after_losing_a_race(match_id, token)
             return symbol
         return None
@@ -132,11 +144,11 @@ class Repository:
         taken = await self._taken_symbols(match_id)
         for symbol in SEATS:
             if symbol not in taken:
-                participant.symbol = symbol
                 try:
-                    await self._session.commit()
+                    async with self._session.begin_nested():
+                        participant.symbol = symbol
+                        await self._session.flush()
                 except IntegrityError:
-                    await self._session.rollback()
                     return None
                 return symbol
         return None
@@ -147,7 +159,7 @@ class Repository:
         if participant is None or participant.match_id != match_id:
             return
         participant.symbol = None
-        await self._session.commit()
+        await self._session.flush()
 
     # -- the move and chat logs --------------------------------------------
 
@@ -161,13 +173,13 @@ class Repository:
         self._session.add(
             Move(match_id=match_id, player_symbol=symbol, move=str(move))
         )
-        await self._session.commit()
+        await self._session.flush()
 
     async def log_chat(self, match_id: str, sender: str, message: str) -> None:
         self._session.add(
             ChatMessage(match_id=match_id, sender=sender, message=message)
         )
-        await self._session.commit()
+        await self._session.flush()
 
     async def get_moves(self, match_id: str) -> list[Move]:
         """The move log in insertion order -- never in whatever order rows come back."""

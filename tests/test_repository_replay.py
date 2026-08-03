@@ -152,6 +152,7 @@ async def test_state_survives_a_process_restart(database_url: str) -> None:
         repo = Repository(session)
         await repo.create_match("m1")
         await _play(repo, X_WINS[:3])
+        await session.commit()
     await first.dispose()
 
     second = create_engine(database_url)
@@ -174,6 +175,7 @@ async def test_a_finished_match_survives_a_restart_as_finished(
         repo = Repository(session)
         await repo.create_match("m1")
         await _play(repo, X_WINS)
+        await session.commit()
     await first.dispose()
 
     second = create_engine(database_url)
