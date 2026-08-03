@@ -1,0 +1,24 @@
+AgentArena -- Release Notes
+===========================
+
+Version 01.01.00 (2026-08-03)
+---------------------------
+Roadmap phase v01.01 -- Project skeleton & the game engine.
+
+- Project skeleton: pyproject.toml with an explicit setuptools package list
+  (games, server, agent), strict mypy, and pytest scoped to tests/.
+- GameInterface: the abstract game plug-in seam (get_state, get_valid_moves,
+  apply_move, is_game_over), pinned by a contract test (architecture.md 4.1).
+  The move payload is opaque to transport; apply_move is the sole legality
+  authority and never raises on bad input.
+- TicTacToe engine: 9-cell board, X first, current_player derived from move
+  parity. apply_move rejects unknown players, non-int moves (bool included,
+  since bool subclasses int), out-of-range indices and occupied cells.
+- Terminal detection: the eight winning lines, draw, and is_game_over. A
+  completed line is checked before fullness, so a board that fills on a
+  winning move reports the winner rather than a draw.
+- Code review fix: current_player is None once the game is over, so callers
+  satisfy the architecture.md 6.2 rule (current_turn is null on the
+  game-ending move) by construction.
+
+Tests: 100 passing. mypy --strict clean.
