@@ -1,8 +1,7 @@
 """TicTacToe — the concrete GameInterface implementation (architecture.md §4.1).
 
-Board state and move legality land here; terminal (win/draw) detection is completed in
-ARENA-039. The move payload is a plain ``int`` cell index ``0-8``; nothing outside this
-module interprets it.
+The move payload is a plain ``int`` cell index ``0-8``; nothing outside this module
+interprets it.
 """
 
 from __future__ import annotations
@@ -12,6 +11,17 @@ from typing import Any
 from games.interface import GameInterface
 
 _OTHER_PLAYER = {"X": "O", "O": "X"}
+
+_WINNING_LINES = (
+    (0, 1, 2),
+    (3, 4, 5),
+    (6, 7, 8),  # rows
+    (0, 3, 6),
+    (1, 4, 7),
+    (2, 5, 8),  # columns
+    (0, 4, 8),
+    (2, 4, 6),  # diagonals
+)
 
 
 class TicTacToe(GameInterface):
@@ -42,4 +52,12 @@ class TicTacToe(GameInterface):
         return True
 
     def is_game_over(self) -> str | None:
+        for a, b, c in _WINNING_LINES:
+            mark = self.board[a]
+            if mark is not None and mark == self.board[b] == self.board[c]:
+                return mark
+
+        if all(cell is not None for cell in self.board):
+            return "draw"
+
         return None
