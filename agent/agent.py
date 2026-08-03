@@ -1,21 +1,26 @@
 """agent/agent.py — the CLI entrypoint and AgentSession (architecture.md §7.1).
 
-A pure external client: imports nothing from server/, talks only over HTTP/WS. The WS
-event loop lands in ARENA-059; this issue only wires arg parsing and the REST join.
+A pure external client: imports nothing from server/, talks only over HTTP/WS.
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import os
 import sys
+from typing import Any
 
 import httpx
+import websockets
+from websockets import ClientConnection
 
 from agent.llm import LLMClient, create_llm_client
 from agent.memory import MemoryWindow
 from agent.profile import AgentProfile
+from agent.prompt import build_prompt
+from agent.schemas import AgentResponse
 
 
 class AgentSession:
@@ -51,6 +56,56 @@ class AgentSession:
             if owns_client:
                 await http_client.aclose()
 
+    async def run(self) -> None:
+        token = await self.join_match()
+        ws_url = self.server_url.replace("http://", "ws://").replace("https://", "wss://")
+        async with websockets.connect(f"{ws_url}/ws/match/{self.match_id}?token={token}") as ws:
+            async for raw in ws:
+                envelope = json.loads(raw)
+                await self._handle_event(ws, envelope)
+
+    async def _handle_event(self, ws: ClientConnection, envelope: dict[str, Any]) -> None:
+        event = envelope.get("event")
+        payload = envelope.get("payload") or {}
+
+        if event == "joined":
+            self.symbol = payload.get("symbol")
+        elif event == "chat_message":
+            sender = payload.get("sender", "")
+            if sender != self.player_name:
+                self.memory.record_chat(sender, payload.get("message", ""))
+            return
+        elif event == "state_update":
+            last_move = payload.get("last_move")
+            if last_move and last_move.get("player") != self.symbol:
+                self.memory.record_move(last_move["player"], last_move["move"])
+        elif event == "game_over":
+            print(f"[{self.player_name}] game over: {payload.get('result')}", flush=True)
+            return
+        else:
+            return
+
+        if self.symbol is not None and payload.get("current_turn") == self.symbol:
+            await self._take_turn(ws, payload)
+
+    async def _take_turn(self, ws: ClientConnection, payload: dict[str, Any]) -> None:
+        board = payload["board"]
+        valid_moves = payload["valid_moves"]
+        prompt = build_prompt(self.memory, board, valid_moves, self.profile)
+        move, comment = await self.decide_move(prompt, valid_moves)
+
+        assert self.symbol is not None
+        self.memory.record_move(self.symbol, move)
+
+        print(f"[{self.player_name}] playing {move}: {comment}", flush=True)
+        await ws.send(json.dumps({"action": "chat", "payload": {"message": comment}}))
+        await ws.send(json.dumps({"action": "submit_move", "payload": {"move": move}}))
+
+    async def decide_move(self, prompt: str, valid_moves: list[int]) -> tuple[int, str]:
+        """Stub: accepts the model's first answer. ARENA-060 adds retry/fallback."""
+        response = await self.llm_client.generate_structured_response(prompt, AgentResponse)
+        return response.move, response.comment
+
 
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="AgentArena agent client")
@@ -73,7 +128,7 @@ def main(argv: list[str] | None = None) -> None:
     session = AgentSession(
         args.server_url, args.match_id, profile, llm_client, args.player_name
     )
-    asyncio.run(session.join_match())
+    asyncio.run(session.run())
 
 
 if __name__ == "__main__":
