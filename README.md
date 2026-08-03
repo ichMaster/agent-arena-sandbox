@@ -111,5 +111,7 @@ The design for changing that lives in `codegen/`:
   model, where the instrumentation points are in each skill, and what the dashboard renders.
 - [architecture.md](codegen/architecture.md) — the contracts: event schema, log format and its
   concurrency rules, the emitter's never-raise guarantee, redaction, and the test strategy.
+- [implementation-plan.md](codegen/implementation-plan.md) — 22 `TRK-###` tasks in 7 steps, each with
+  implementation detail and acceptance criteria.
 - [dashboard/prototype.html](codegen/dashboard/prototype.html) — a self-contained working prototype
   of the dashboard, with mock data shaped to the event schema.
