@@ -247,19 +247,132 @@ its normal state between runs.
 > be less code and is the wrong call: the tracker would then be regenerated (and broken) by every run,
 > and could not display the run that is currently deleting it.
 
-**What it shows**
+### 6.1 What is tracked — the metric catalogue
 
-- **Live tree** — run → phase → version → step → issue, each node with elapsed time and status. The
-  currently-executing node is obvious at a glance.
-- **Throughput** — issues completed per hour; time distribution across implement / validate / commit.
-- **Failure surface** — every `issue.failed`, its attempt number, and what the validator said. Over
-  multiple runs this becomes the most interesting artifact in the project: *where does generation
-  actually go wrong, and does it go wrong in the same places?*
-- **Quality flow** — findings by severity, fix-now vs deferred, and what the harden sweep later closed.
-- **Suite trajectory** — test count and duration climbing version by version.
+Everything below is either carried on an event from §4 or computed from a pair of them. Nothing here
+needs a source the log doesn't already have; if a metric can't be derived from the event stream, it
+doesn't belong on the dashboard.
 
-**Cross-run comparison** is where this earns its keep. One run is an anecdote; the same phase generated
-five times, with the variance in duration, retry count and failure location, is data.
+**Progress — "how far along, and what is happening right now"**
+
+| Metric | Derived from |
+|---|---|
+| Current node (phase / version / step / issue) | latest `*.start` with no matching `*.end` |
+| Versions done / planned · issues done / planned | `version.end` count vs the Step 0 plan |
+| Elapsed per node, and total | `*.end.ts − *.start.ts`; live nodes use `now − start` |
+| Versions skipped as already-released | `version.skipped` |
+
+**Time — "where does the time actually go"**
+
+| Metric | Derived from |
+|---|---|
+| Duration per step (generate/upload/execute/review/release) | `step.start` → `step.end` |
+| Per-issue split: implement / validate / commit | `issue.start` → `issue.implement.end` → `issue.validate.end` → `issue.commit` |
+| Throughput — issues completed per hour | rolling count of `issue.end{ok}` |
+| Time lost to retries | Σ durations of `issue.failed` attempts |
+
+**Failure — "what went wrong, and where"**
+
+| Metric | Derived from |
+|---|---|
+| Attempts per issue | `issue.validate.end.data.attempt` |
+| **First-pass rate** — issues green on attempt 1 | share of `issue.end{ok}` with max attempt = 1 |
+| Failure reason (assertion / type error / import…) | `issue.validate.end.data` on a `fail` |
+| Reverted work | `issue.reverted` — **exists nowhere else**, see §1 |
+| Gate blocks and why the run stopped | `gate.blocked`, `run.aborted` |
+
+**Quality — "what the reviews found and what closed them"**
+
+| Metric | Derived from |
+|---|---|
+| Findings by severity (HIGH / MEDIUM / LOW) | `finding.raised.data.severity` — *not* `status`, which is the `ok`/`fail`/`skip`/`held` outcome |
+| Fix-now vs deferred | `finding.classified` |
+| Closed by review vs by the harden sweep | `finding.fixed` vs `harden.finding.fixed` |
+| Held by the escape hatch, with reason | `harden.finding.held` |
+
+**Output — "what the run actually produced"**
+
+| Metric | Derived from |
+|---|---|
+| Tests passing, per version | `issue.validate.end.data.pytest.passed` |
+| Suite duration | `…pytest.duration_s` |
+| Type errors | `…mypy.errors` |
+| Commits, files touched | `issue.commit` |
+| Releases | `release.tagged` / `release.pushed` |
+
+### 6.2 How it is reflected — the panels
+
+One filter row (run · phase · status) sits **above everything** and scopes every panel; no panel
+carries its own filter. Each panel below names the form and why that form, since the wrong form here
+is the difference between a dashboard and a decoration.
+
+**1 · Run header — hero figure, not a chart.** The one thing you look at first: the currently
+executing node, as text, with elapsed beside it (`v01.02 · ARENA-007 · validating · 04:12`). A single
+current value is a stat tile or a hero number — never a one-bar chart. Run status uses the **status
+palette** (running / ok / failed / held) with an icon and a word, never color alone.
+
+**2 · KPI row — stat tiles.** Versions done, issues done, tests passing (with delta since run start),
+first-pass rate, findings open. Value + delta + sparkline each. A handful of headline numbers is a KPI
+row, not a grouped bar chart.
+
+**3 · Live tree — the primary panel, and it is a tree, not a chart.** run → phase → version → step →
+issue, each row showing status and elapsed, the active branch expanded. Five nested levels with
+per-node state is more classes than color can carry; the honest form is an indented list with status
+icons. Everything else on the page is secondary to this.
+
+**4 · Where time went — horizontal stacked bar, one bar per version, segments = the five steps.**
+Part-to-whole wants a stacked bar, horizontal because the version labels are long. Categorical color
+across five steps sits inside the comfortable range, with a legend always present. A convenient
+property of the pipeline: because steps are **strictly gated and sequential**, the composition bar
+*is* the chronology — no separate Gantt is needed.
+
+**5 · Failure surface — attempts per issue, bar, with emphasis.** Most issues pass first time, so
+categorical color across every issue would bury the signal. Use **emphasis**: issues needing >1
+attempt in the accent hue, the rest in de-emphasis gray. That is the whole point of the panel —
+"which issues fought back" — and emphasis is the form that says it.
+
+**6 · Suite trajectory — line, one series, no legend.** Tests passing per version over time. The title
+names the series, so no legend box.
+
+> ⚠️ **Do not put suite duration on this chart.** Test count (0–250) and suite duration (0–8s) are
+> different scales, and a second y-axis would manufacture a correlation that isn't in the data. This is
+> the single most common charting mistake and this panel is exactly where it would happen. Use a second
+> small chart, or index both to 100 at v01.01 on one axis.
+
+**7 · Quality flow — stacked bar per version, segments = outcome.** Fixed-now / hardened / still
+deferred / held. Severity is an **ordered** scale, so where severity is the encoding it takes the
+ordinal ramp or the status palette (it genuinely means "how bad") — never eight categorical hues, and
+always with an icon and label beside it.
+
+### 6.3 Cross-run comparison — where this earns its keep
+
+One run is an anecdote. The same phase generated five times is data, and it answers the question the
+whole project exists to ask: **is generation reliably wrong in the same places?**
+
+- **Duration variance per version across runs** — small multiples, one panel per version. Two runs
+  compared directly is a dumbbell (before → after, one hue in two shades).
+- **Failure clustering — heatmap, version × area, cell = failures.** A grid of magnitudes is a heatmap
+  with a single-hue sequential ramp, light→dark. Never a rainbow. This is the panel most likely to
+  produce a real finding: if `server/` v01.03 is dark in every run, that is a specification problem,
+  not a model problem.
+- **First-pass rate over runs** — line, one series. The headline health number for the whole exercise.
+
+### 6.4 Rendering rules
+
+These are not stylistic preferences; each prevents a specific known failure.
+
+- **Colors are validated, never eyeballed.** Run the palette through a CVD checker before shipping;
+  adjacent-pair separation is computable, so compute it.
+- **Color follows the entity, never its rank.** Filtering to three versions must not repaint the
+  survivors — a reader who learned "review is teal" stays right.
+- **No dual-axis chart anywhere on the page.** See panel 6.
+- **Live updates hold the previous render** at reduced opacity while new events land. No skeleton
+  flash, no layout jump — events arrive every few seconds, so a flashing dashboard would be unusable.
+- **Every chart has a table-view twin**, and tooltips enhance rather than gate: no value is reachable
+  *only* by hovering. Keyboard focus shows what hover shows.
+- **Thin marks, hairline grid, generous padding.** Direct-label selectively — the endpoint, the
+  extreme, the one series that matters — never a number on every point.
+- **Dark mode is designed, not flipped** — its own steps validated against the dark surface.
 
 ---
 
