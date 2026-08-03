@@ -17,8 +17,7 @@ codegen/
 ├── hooks/        Claude Code hooks — the independent floor  (stdlib only)
 ├── dashboard/    FastAPI server + a no-build page on :8420
 ├── runs/         one directory per run — the logs ARE the product (gitignored)
-├── reset.py          delete what a run created, from the run's own log
-└── tests/            323 tests
+└── tests/        288 tests
 ```
 
 ---
@@ -187,22 +186,16 @@ the dashboard normally reduces the log on every request. `tracker.state` creates
 It invalidates itself as soon as the log grows, so a stale snapshot can't freeze the page —
 and deleting it loses nothing.
 
-```bash
-python3 codegen/reset.py              # dry run — always start here
-python3 codegen/reset.py --apply      # actually delete
-```
-
-Deletes what a run created **by reading the run's own log**: the log names the commits (and
-the tags, which name the release commits), and `git show --diff-filter=A` names the files
-those commits *added*. Nothing in it hardcodes `server/` or `games/` — that is what makes it
-portable to the next product.
+`/reset-generated` clears what a run created, reading the run's own log: the log names the
+commits (and the tags, which name the release commits), and `git show --diff-filter=A` names
+the files those commits *added*. The skill carries the commands — there is no script.
 
 It never touches `codegen/` (the logs are the product), `.claude/` (the skills are source),
-`.env` / `.envrc` / `.gitignore` (a deleted key may not be recoverable), or GitHub issues
+`.env*` / `.envrc` / `.gitignore` (a deleted key may not be recoverable), or GitHub issues
 (they carry the `ARENA-###` counter). Anything the log does not account for is **left alone
-and reported** — an unexplained deletion is worse than an unexplained leftover.
+and reported**.
 
-`/reset-generated` is the same thing as a skill.
+
 
 ---
 
