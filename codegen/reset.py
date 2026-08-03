@@ -45,7 +45,28 @@ REPO = Path(__file__).resolve().parent.parent
 #: `.claude` matters more than it looks. A fix to a skill is source, and a run commit
 #: that CREATES a skill file would otherwise put it in the deletion set. (An *edited*
 #: skill was always safe: `--diff-filter=A` lists additions only.)
-ALWAYS_KEEP = ("codegen", ".claude", ".git")
+ALWAYS_KEEP = (
+    "codegen",
+    ".claude",
+    ".git",
+    # Local secrets and the rule that hides them. Neither is generated output, and both
+    # are the same in every product, so naming them costs no portability.
+    #
+    # Today a reset would already spare them -- the file set comes from
+    # `git --diff-filter=A`, and a gitignored file is never added by a run commit. That
+    # is a property of the *current* .gitignore, not a guarantee: loosen the ignore rule,
+    # or `git add -f` once, and a run commit would put a real API key in the deletion set.
+    # A leftover .env is a small annoyance; a deleted one is a secret that may not be
+    # recoverable, so this asymmetry is worth a hard guard rather than a derived one.
+    ".env",
+    ".envrc",
+    ".gitignore",
+)
+
+#: Prefix match too, so `.env.local` / `.env.production` are covered without listing them.
+#: `.env.example` is a template with no secret in it, and is deliberately NOT protected --
+#: it is ordinary source that a run may legitimately create and a reset may remove.
+SECRET_PREFIXES = (".env.",)
 
 #: Events whose ``data.sha`` names a commit this run produced.
 COMMIT_EVENTS = ("issue.commit", "finding.fixed", "harden.finding.fixed")
@@ -69,6 +90,8 @@ class Manifest:
     shas: list[str] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)
     missing_shas: list[str] = field(default_factory=list)
+    #: Protected paths a run commit added -- reported, never deleted.
+    protected: list[str] = field(default_factory=list)
     files: list[str] = field(default_factory=list)
     withheld: list[str] = field(default_factory=list)
     unaccounted: list[str] = field(default_factory=list)
@@ -132,6 +155,13 @@ def build_manifest(runs_root: Path, repo: Path | None = None) -> Manifest:
             continue
         manifest.shas.append(sha)
         for path in files_added_by(sha, repo):
+            if is_protected(path):
+                # A run commit added a protected path -- a committed .env, or a
+                # .gitignore the generator wrote. Record it so the omission is visible
+                # rather than silent, but never queue it for deletion.
+                if path not in manifest.protected:
+                    manifest.protected.append(path)
+                continue
             if path not in files:
                 files.append(path)
 
@@ -193,6 +223,8 @@ class Plan:
             ("files this run created", m.files),
             ("tags this run cut", m.tags),
             ("build residue", [str(p) for p in self.residue]),
+            ("protected -- a run created these, but they are NEVER deleted",
+             self.manifest.protected),
         ):
             if items:
                 lines.append(f"{label} ({len(items)}):")
@@ -222,6 +254,8 @@ class Plan:
             "never touched:",
             "  codegen/          the tracker, and codegen/runs/ -- the logs are the product",
             "  .claude/          the skills; a fix to one is source, not output",
+            "  .env, .envrc      local secrets -- a deleted key may not be recoverable",
+            "  .gitignore        the rule that keeps those secrets out of git",
             "  GitHub issues     they carry the issue-id counter; this never calls gh",
         ]
         return "\n".join(lines)
@@ -244,8 +278,8 @@ def build_plan(runs_root: Path | None = None, *, force: bool = False) -> Plan:
 
     for pattern in ("**/__pycache__", "**/*.egg-info", ".pytest_cache", ".mypy_cache", "*.db"):
         for path in REPO.glob(pattern):
-            parts = path.relative_to(REPO).parts
-            if parts and (parts[0] in ALWAYS_KEEP or parts[0] == ".venv"):
+            relative = path.relative_to(REPO)
+            if is_protected(relative) or relative.parts[:1] == (".venv",):
                 continue
             plan.residue.append(path.relative_to(REPO))
     return plan
@@ -262,9 +296,20 @@ def _active_run() -> str | None:
         return None
 
 
-def _assert_safe(relative: str | Path) -> None:
+def is_protected(relative: str | Path) -> bool:
+    """Whether a path may never be deleted, whatever a log claims."""
     parts = Path(relative).parts
-    if parts and parts[0] in ALWAYS_KEEP:
+    if not parts:
+        return False
+    head = parts[0]
+    if head in ALWAYS_KEEP:
+        return True
+    # `.env.example` is a template, not a secret -- it stays deletable.
+    return head.startswith(SECRET_PREFIXES) and head != ".env.example"
+
+
+def _assert_safe(relative: str | Path) -> None:
+    if is_protected(relative):
         raise RuntimeError(f"refusing to delete protected path {relative}")
 
 

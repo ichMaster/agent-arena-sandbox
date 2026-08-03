@@ -282,3 +282,59 @@ def test_source_shaped_additions_are_withheld_and_reported(repo: Path) -> None:
     assert (repo / "spec" / "new_contract.md").is_file()
     assert (repo / "NOTES.md").is_file()
     assert not (repo / "spec" / "implementation" / "v01.01-issues.md").exists()
+
+
+# ── protected paths: secrets and the rule that hides them ───────────────────
+
+
+@pytest.mark.parametrize(
+    "path",
+    [".env", ".env.local", ".env.production", ".envrc", ".gitignore",
+     "codegen/runs/current", ".claude/skills/x/SKILL.md", ".git/config"],
+)
+def test_protected_paths_are_never_deletable(path: str) -> None:
+    assert reset_mod.is_protected(path) is True
+
+
+@pytest.mark.parametrize(
+    "path",
+    [".env.example", "server/main.py", "pyproject.toml", "VERSION", "web/app.js"],
+)
+def test_ordinary_generated_files_stay_deletable(path: str) -> None:
+    """`.env.example` is a template with no secret -- it is ordinary source."""
+    assert reset_mod.is_protected(path) is False
+
+
+def test_apply_refuses_a_protected_path() -> None:
+    """Belt and braces: even a hand-built plan cannot delete a secret."""
+    with pytest.raises(RuntimeError, match="refusing to delete protected path"):
+        reset_mod._assert_safe(".env")
+
+
+def test_a_committed_env_is_reported_not_queued(repo: Path) -> None:
+    """The scenario the guard exists for.
+
+    Today .env is safe only because it is gitignored, so no run commit ever adds it.
+    Loosen the ignore rule or `git add -f` once and a real API key lands in a run
+    commit -- and a derived-safety reset would delete it. A leftover .env is an
+    annoyance; a deleted one is a secret that may not be recoverable.
+    """
+    (repo / ".env").write_text("ANTHROPIC_API_KEY=sk-ant-not-a-real-key\n")
+    (repo / "generated.py").write_text("x = 1\n")
+    subprocess.run(["git", "add", "-f", ".env", "generated.py"], cwd=repo, check=True)
+    sha = _commit(repo, "run commit that swept up a secret")
+
+    runs = repo / "codegen" / "runs" / "run-20260803-120000"
+    runs.mkdir(parents=True, exist_ok=True)
+    (runs / "events.jsonl").write_text(
+        json.dumps({
+            "v": 1, "ts": "2026-08-03T12:00:00.000Z", "run_id": "run-20260803-120000",
+            "type": "issue.commit", "emitter": "skill:execute-issues",
+            "scope": {}, "data": {"sha": sha},
+        }) + "\n"
+    )
+
+    manifest = reset_mod.build_manifest(repo / "codegen" / "runs", repo=repo)
+    assert ".env" not in manifest.files, "a secret must never be queued for deletion"
+    assert ".env" in manifest.protected, "and the omission must be visible, not silent"
+    assert "generated.py" in manifest.files, "ordinary generated files still go"
