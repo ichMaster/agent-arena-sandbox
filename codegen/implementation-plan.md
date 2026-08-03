@@ -28,6 +28,7 @@ These are settled here so no task has to re-litigate them.
 | **The dashboard runs on port 8420**, never 8000. | 8000 is the generated app's. Both may run at once. |
 | **Python ≥ 3.11**, matching the generated project's floor. | `tomllib`, `datetime.UTC`, and exception groups are all available. |
 | **`ruff` + `mypy --strict` over `codegen/`**, same bar as the app. | The tracker is real code and gets the repo's normal standard. |
+| **TRK tasks are implemented by ordinary development — never by `/ship-phase` or `/ship-solution`.** | Those build the application from `spec/`; this system observes them. Using them here would be circular (TRK-010–015 modify those very skills), would need inputs the tracker doesn't have (roadmap versions, `ARENA-###`), would produce outputs it doesn't want (`vXX.YY.00` releases), and would put the tracker's own construction inside the log it produces. Architecture §1.1. |
 
 ---
 
@@ -42,7 +43,8 @@ These are settled here so no task has to re-litigate them.
 | 5 | TRK-005 | Run context — id, `runs/current`, lifecycle | S | 1 | TRK-003 |
 | 6 | TRK-006 | `reduce.py` — pure events → state | L | 2 | TRK-002 |
 | 7 | TRK-007 | Scope range + ETA model | M | 2 | TRK-006 |
-| 8 | TRK-008 | Golden fixtures + tolerance tests | M | 2 | TRK-006 |
+| 8 | TRK-008 | Golden fixtures + tolerance tests | M | 2 | TRK-006, TRK-024 |
+| 24 | TRK-024 | Synthetic log generator + replay harness | M | 2 | TRK-002 |
 | 9 | TRK-009 | `state.json` writer + rebuild CLI | S | 2 | TRK-006 |
 | 10 | TRK-010 | Instrument `ship-phase` spine | M | 3 | TRK-005 |
 | 11 | TRK-011 | `version.decomposed` in `generate-issues` | S | 3 | TRK-010 |
@@ -104,6 +106,9 @@ lint/type configuration. No runtime behaviour.
   distributable package and must not be picked up by the generated project's build.
 - Verify no path under `codegen/` is caught by the inherited `.gitignore` (architecture §4.1 names the
   `lib/`, `build/`, `dist/` trap).
+- `codegen/tests/conftest.py`: an **autouse** fixture pointing `CODEGEN_RUNS_DIR` at `tmp_path`, plus a
+  session-scoped guard that fails the suite if anything resolves the runs root to the real
+  `codegen/runs/`. Without this, one forgetful test corrupts a live run (architecture §10).
 
 **Dependencies:** None
 
@@ -112,6 +117,8 @@ lint/type configuration. No runtime behaviour.
 - [ ] `python3 -m pytest codegen/tests` runs and collects 0 tests without error.
 - [ ] `mypy codegen/` and `ruff check codegen/` both pass on the empty tree.
 - [ ] Installing `codegen/requirements.txt` is **not** required for `pytest codegen/tests` to run.
+- [ ] A test that writes an event leaves `codegen/runs/` untouched; the guard fails a deliberately
+      mis-pointed test.
 
 ---
 
@@ -149,7 +156,8 @@ architecture §2–3. This is the single source of truth; the prose in architect
 **Implementation:**
 - `emit(type, *, scope=None, status=None, data=None, emitter)` per architecture §5.1, plus a
   `__main__` CLI for shell/hook callers.
-- Resolve the run from `codegen/runs/current`; if absent, return silently (nothing to attribute to).
+- Resolve the runs root from `CODEGEN_RUNS_DIR`, defaulting to `codegen/runs/` — **never a hardcoded
+  path**, so tests can redirect it (architecture §10). Then read `current`; if absent, return silently.
 - Serialise with `json.dumps(..., separators=(",", ":"), ensure_ascii=False)`, append `\n`, encode.
 - If the line exceeds **4096 bytes**, truncate string values in `data` to 512 chars and set
   `data._truncated = true`; re-serialise. Never split a line.
@@ -283,17 +291,47 @@ filesystem, no env.
 
 ---
 
+### TRK-024 — Synthetic log generator + replay harness
+
+**Description:** Produce realistic logs without running the pipeline. Resolves a chicken-and-egg:
+fixtures must be realistic, but a real log only exists after TRK-010–015 land — and a 40-minute run
+with real commits, tags and GitHub issues is not an iteration loop.
+
+**Implementation:**
+- `codegen/tests/gen_log.py`: builds a plausible run's events from a compact scenario description
+  (versions, issue counts and sizes, which issues retry, where it fails). Deterministic — a seed and
+  fixed timestamps in, the same bytes out, so it can generate committed fixtures.
+- Scenario presets covering each §10.2 failure mode, so fixtures are generated rather than
+  hand-authored line by line.
+- `codegen/tests/replay.py`: appends a recorded or generated log to a live run directory at an
+  adjustable rate (`--speed 10`), so the dashboard can be developed against **motion** without a real
+  run. This is the only way to exercise TRK-019/020's update discipline before the pipeline is
+  instrumented.
+
+**Dependencies:** TRK-002
+
+**Acceptance criteria:**
+- [ ] Same scenario + seed → byte-identical log across runs.
+- [ ] Every generated log validates against `schema.json`, including the deliberately malformed
+      scenarios (which must be malformed **in the intended way**, not accidentally).
+- [ ] All seven §10.2 fixtures are generated from presets, not hand-written.
+- [ ] `replay.py --speed 10` drives a visible live update in the dashboard.
+- [ ] Generator and replay are **test-only** — nothing in `tracker/`, `hooks/` or `dashboard/` imports
+      them.
+
+---
+
 ### TRK-008 — Golden fixtures + tolerance tests
 
 **Description:** The committed fixture logs from architecture §10.2 and their expected states. This is
 the core of the suite.
 
-**Implementation:** Author each fixture in `codegen/tests/fixtures/` with a sibling
-`<name>.expected.json`: `clean-run`, `retry-run`, `aborted-run`, `torn-tail`, `malformed`,
+**Implementation:** Generate each fixture with TRK-024's presets into `codegen/tests/fixtures/`, each
+with a sibling `<name>.expected.json`: `clean-run`, `retry-run`, `aborted-run`, `torn-tail`, `malformed`,
 `skipped-versions`, `no-review`. A helper regenerates expectations behind an explicit
 `--update-golden` flag, never by default.
 
-**Dependencies:** TRK-006
+**Dependencies:** TRK-006, TRK-024
 
 **Acceptance criteria:**
 - [ ] Each fixture reduces to its expected state exactly.

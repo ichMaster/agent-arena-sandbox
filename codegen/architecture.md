@@ -35,6 +35,35 @@ Four pieces, one direction of dependency. Nothing downstream is required for the
 **Dependency rule.** `tracker/` imports nothing. `hooks/` imports `tracker/`. `dashboard/` imports
 `tracker/`. Nothing imports `server/`, `games/`, or `agent/` — those directories may not exist.
 
+### 1.1 Who builds this — and why not the pipeline
+
+**The tracker is written by ordinary development work, never by `/ship-phase` or `/ship-solution`.**
+Those orchestrators build the *application*; this system observes them. Five reasons the boundary is
+strict rather than stylistic:
+
+| | |
+|---|---|
+| **Circularity** | TRK-010–015 modify the very skills that would be doing the building. A broken emit instruction would then break the build of its own fix. |
+| **Wrong inputs** | `ship-phase` decomposes `spec/roadmap.md` into `ARENA-###` issues under `spec/implementation/`. The tracker has no roadmap versions — it has `TRK-###` tasks in `implementation-plan.md`. |
+| **Wrong outputs** | `ship-phase` releases per version: `vXX.YY.00` tags, `VERSION` and `RELEASE.txt` bumps. The tracker is not versioned that way. |
+| **Contaminated measurement** | A tracker built by an instrumented run would have its own construction in the log — self-reference inside every metric. |
+| **Different lifecycle** | The application is deleted and regenerated every run; the tracker must survive exactly that (vision §3 principle 6). |
+
+Two codebases, two plans, two test suites, two lifecycles — and one pipeline, which touches only one
+of them.
+
+**The two test suites are not the same thing and never share a directory:**
+
+| | `tests/` (repo root) | `codegen/tests/` |
+|---|---|---|
+| Tests | the generated application | the tracker |
+| Written by | `execute-issues`, as part of each `ARENA-###` | ordinary development, as part of each `TRK-###` |
+| Lifecycle | deleted and regenerated with the app | permanent |
+| Run by | the pipeline's own validation gate | `pytest codegen/tests` |
+
+A tracker test must never depend on the application existing, and an application test must never know
+the tracker exists.
+
 ---
 
 ## 2. Event contract
@@ -397,6 +426,13 @@ separately by default and can stitch them on request.
 Tests live in **`codegen/tests/`** and run with `pytest`. They must not touch the network, must not
 call a model, and must not depend on `server/`, `games/`, or `agent/` existing.
 
+> **Isolation is a hard requirement, not hygiene.** The emitter resolves the active run from
+> `codegen/runs/current`. A test that forgets to redirect it would append its fixtures to — or worse,
+> repoint — **a real run in progress**. So the runs root is never hardcoded: it comes from
+> `CODEGEN_RUNS_DIR` (falling back to `codegen/runs/`), an autouse fixture points it at `tmp_path` for
+> every test, and a session-scoped guard fails the suite immediately if any test resolves the runs root
+> to the real directory.
+
 ### 10.1 Schema conformance
 
 - Every event type in §3 has a valid example that validates against `schema.json`.
@@ -456,7 +492,22 @@ Skill compliance cannot be unit-tested: whether a model followed an emit instruc
 - The HTML prototype's palette stays validated: a test shells out to the palette validator and fails
   on a regression, so a colour tweak cannot silently break CVD safety.
 
-### 10.6 What is deliberately not tested
+### 10.6 Skill instrumentation is verified by real runs, not by a suite
+
+TRK-010–015 change **prompts**, and a prompt has no unit test. There is deliberately no test suite for
+them. They are verified two ways, both of which cost nothing extra because they happen anyway:
+
+- **On the next real run** — the log's `*.start`/`*.end` pairs must balance, and the plan the log
+  reports must match the plan the skill confirmed. A structural check over a log that a run produced
+  regardless.
+- **By reconciliation** (§10.4) — a standing measurement of whether the skills emitted what they were
+  told to, reported as a rate.
+
+Spinning up throwaway `/ship-phase` runs purely to test instrumentation is not worth it: each costs
+~10 minutes and produces real commits, tags and GitHub issues. The runs you were going to do anyway are
+the test.
+
+### 10.7 What is deliberately not tested
 
 Visual layout. Screenshots are checked by eye during development (that is how the four prototype bugs
 surfaced); pixel-diffing a dashboard against a golden image is a maintenance cost with a poor
