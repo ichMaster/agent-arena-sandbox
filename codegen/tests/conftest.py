@@ -26,6 +26,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from tracker import paths  # noqa: E402
 
+# reset.py sits at codegen/ root, not inside a package.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 #: The directory that must never be written to by a test.
 REAL_RUNS_ROOT = paths.codegen_root() / "runs"
 

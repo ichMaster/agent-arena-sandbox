@@ -24,6 +24,7 @@ spec/              the specification the skills build from
 .claude/skills/    the ten SDLC skills that generate the code
   generate-issues · upload-issues · execute-issues · execute-issues-file
   reconcile-issues · review-and-fix-issues · harden-findings · release-version
+  reset-generated                   ← clears a run's output, from the run's own log
   ship-phase · ship-solution        ← the two orchestrators
 ```
 

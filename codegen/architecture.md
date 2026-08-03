@@ -30,6 +30,7 @@ Four pieces, one direction of dependency. Nothing downstream is required for the
 | **Reducer** | `codegen/tracker/reduce.py` | Pure `events → state`. No I/O beyond reading the log. |
 | **Hooks** | `codegen/hooks/*.py` | Harness-invoked; translate tool calls into events. |
 | **Dashboard** | `codegen/dashboard/server.py` | Tails the log, serves the UI, pushes over WS. |
+| **Reset** | `codegen/reset.py` | Deletes what a run created, read from its own log (skill: `reset-generated`). |
 | **Tests** | `codegen/tests/` | See §10. **Not** the app's `tests/`, which is deleted every run. |
 
 **Dependency rule.** `tracker/` imports nothing. `hooks/` imports `tracker/`. `dashboard/` imports
