@@ -45,6 +45,16 @@ def test_init_player_cards_never_calls_a_method_directly_on_symbol() -> None:
     assert not re.search(r"\bsymbol\.\w+\(", body)
 
 
+def test_render_board_checks_valid_moves_not_just_emptiness() -> None:
+    """Regression test for code review #1 (v03.02): playability must match
+    web_ui_specification.md §4.2's exact rule, not a TicTacToe-specific coincidence."""
+    js = _app_js()
+    match = re.search(r"function renderBoard\([^)]*\)\s*\{(.*?)\n\}", js, re.DOTALL)
+    assert match, "renderBoard body not found"
+    body = match.group(1)
+    assert re.search(r"validMoves\.includes\(i\)", body)
+
+
 def test_route_event_wires_joined_and_state_update_to_rendering() -> None:
     js = _app_js()
     match = re.search(r"function routeEvent\([^)]*\)\s*\{(.*?)\n\}", js, re.DOTALL)

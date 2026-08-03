@@ -105,9 +105,10 @@ function setConnectionStatus(connected) {
 
 // renderBoard draws marks into the 9 existing #cell-N buttons and toggles each cell's
 // playable/disabled state (web_ui_specification.md §4.2). A cell is playable only when
-// it's empty, the game is active, and it's this client's turn — the interactivity gate
-// *is* the client-side legality signal (§1: no move validation beyond it).
-function renderBoard(board, currentTurn, mySymbolParam, isGameActiveParam) {
+// it's in validMoves, the game is active, and it's this client's turn — checking
+// validMoves directly (not just "cell is empty") matches the spec exactly and doesn't
+// assume TicTacToe's specific coincidence that "empty" and "legal" are the same set.
+function renderBoard(board, currentTurn, validMoves, mySymbolParam, isGameActiveParam) {
   for (let i = 0; i < 9; i++) {
     const cell = document.getElementById(`cell-${i}`);
     if (!cell) continue;
@@ -124,7 +125,8 @@ function renderBoard(board, currentTurn, mySymbolParam, isGameActiveParam) {
       cell.classList.add("empty");
     }
 
-    const playable = mark === null && isGameActiveParam && currentTurn === mySymbolParam;
+    const playable =
+      validMoves.includes(i) && isGameActiveParam && currentTurn === mySymbolParam;
     if (playable) {
       cell.classList.add("playable");
     }
@@ -197,11 +199,11 @@ function routeEvent({ event, payload }) {
     case "joined":
       mySymbol = payload.symbol;
       initPlayerCards(mySymbol);
-      renderBoard(payload.board, payload.current_turn, mySymbol, isGameActive);
+      renderBoard(payload.board, payload.current_turn, payload.valid_moves, mySymbol, isGameActive);
       updateActiveCard(payload.current_turn);
       break;
     case "state_update":
-      renderBoard(payload.board, payload.current_turn, mySymbol, isGameActive);
+      renderBoard(payload.board, payload.current_turn, payload.valid_moves, mySymbol, isGameActive);
       updateActiveCard(payload.current_turn);
       break;
     case "chat_message":
