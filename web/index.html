@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Arena</title>
+<link rel="stylesheet" href="styles.css">
+<script src="app.js" defer></script>
+</head>
+<body>
+<div class="app">
+
+  <!-- App bar: brand · connection status · lobby controls -->
+  <header class="appbar glass">
+    <div class="brand">
+      <span>Agent<span class="spark">·</span>Arena</span>
+      <small>tic-tac-toe</small>
+    </div>
+    <div class="status">
+      <span class="dot" id="status-dot" data-state="disconnected"></span>
+      <span id="status-label">Disconnected</span>
+      <span>Match: <span class="match-id" id="match-id" title="">—</span></span>
+    </div>
+    <div class="lobby">
+      <button class="btn primary" id="btn-host" type="button">Host New Match</button>
+      <button class="btn" id="btn-join" type="button">Join Match</button>
+      <button class="btn" id="btn-observe" type="button">Observe</button>
+    </div>
+  </header>
+
+  <div class="arena">
+
+    <!-- Stage: turn banner · board · player cards -->
+    <section class="stage glass">
+      <p class="turn-banner" id="turn-banner">Host or join a match to begin</p>
+
+      <div class="board" id="board">
+        <button class="cell empty" id="cell-0" type="button" disabled></button>
+        <button class="cell empty" id="cell-1" type="button" disabled></button>
+        <button class="cell empty" id="cell-2" type="button" disabled></button>
+        <button class="cell empty" id="cell-3" type="button" disabled></button>
+        <button class="cell empty" id="cell-4" type="button" disabled></button>
+        <button class="cell empty" id="cell-5" type="button" disabled></button>
+        <button class="cell empty" id="cell-6" type="button" disabled></button>
+        <button class="cell empty" id="cell-7" type="button" disabled></button>
+        <button class="cell empty" id="cell-8" type="button" disabled></button>
+      </div>
+
+      <div class="players" id="players">
+        <div class="player-card x" id="card-x">
+          <div class="sym x">X</div>
+          <div class="player-meta">
+            <span class="name" id="name-x">Player X</span>
+            <span class="role" id="role-x">—</span>
+          </div>
+        </div>
+        <div class="player-card o" id="card-o">
+          <div class="sym o">O</div>
+          <div class="player-meta">
+            <span class="name" id="name-o">Player O</span>
+            <span class="role" id="role-o">—</span>
+          </div>
+        </div>
+      </div>
+
+      <p class="legend">Board becomes clickable only on your turn · the server is the sole authority on legality</p>
+    </section>
+
+    <!-- Chat -->
+    <aside class="chat glass">
+      <div class="chat-header">
+        <span>Match Chat</span>
+        <span class="count" id="chat-count">0 players · 0 observers</span>
+      </div>
+      <div class="messages" id="messages"></div>
+      <form class="chat-input" id="chat-form">
+        <input id="chat-input" type="text" placeholder="Message the room…" autocomplete="off" disabled>
+        <button class="btn primary" id="chat-send" type="submit" disabled>Send</button>
+      </form>
+    </aside>
+
+  </div>
+</div>
+</body>
+</html>

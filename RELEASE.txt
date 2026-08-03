@@ -1,0 +1,321 @@
+AgentArena — Release Notes
+==========================
+
+Version 05.03.00 (2026-07-21)
+------------------------------
+Version v05.03 — Polish & docs. **v05 release gate — the MVP is complete.**
+Git tag: opus-sonnet-v05.03.00 (namespaced — this branch's independent build).
+
+- README.md: replaced the 3-line stub (which named the wrong vendors) with
+  a real README covering what AgentArena is, the architecture at a
+  glance, setup, all three run modes with the real shipped commands, the
+  WS protocol summary, testing, and data/reset. (ARENA-OPUS-037)
+- tests/test_readme.py (doc-smoke, no live command execution): every
+  referenced command/path exists and is accurate; all three modes are
+  documented; no stale vendor names. (ARENA-OPUS-037)
+- Review fix: uvicorn was not declared in pyproject.toml -- the README's
+  first command would have failed on a genuinely clean install. Now
+  declared, with a regression test (code review #1, HIGH).
+- UI aesthetic: confirmed already shipped in v03; no UI code touched.
+- Quality: 226 tests passing; mypy --strict clean; zero paid calls.
+
+This completes phases v01-v05 -- all 15 roadmap versions shipped.
+
+Version 05.02.00 (2026-07-21)
+------------------------------
+Version v05.02 — End-to-end integration suite.
+Git tag: opus-sonnet-v05.02.00 (namespaced — this branch's independent build).
+
+- tests/conftest.py (new): an autouse fixture patches agent.llm.AsyncAnthropic
+  for every test in the suite -- paid-call-safe by construction, not just
+  convention. (ARENA-OPUS-035)
+- tests/test_agent_vs_agent.py: two real AgentSessions (Ironclaw vs
+  Bastion, both LLMs scripted-mocked) play a full game to game_over over
+  real WS connections against the real server -- the v04 headline
+  scenario, automated. Deterministic; exact LLM call counts per side.
+  (ARENA-OPUS-036)
+- Review: no findings.
+- Quality: 220 tests passing; mypy --strict clean; zero paid calls.
+
+Version 05.01.00 (2026-07-21)
+------------------------------
+Version v05.01 — Resilience & reconnection. First version of phase v05
+(Hardening & Polish).
+Git tag: opus-sonnet-v05.01.00 (namespaced — this branch's independent build).
+
+- server/main.py: the WS receive loop no longer crashes on malformed
+  input -- invalid JSON, valid-but-non-object JSON, and a raw binary
+  frame all yield a graceful error event and keep the connection open
+  and usable, closing a real gap found during reconciliation (this
+  version's own DoD was not actually implemented before this release).
+  (ARENA-OPUS-034)
+- tests/test_reconnect.py: a same-token reconnect reclaims its seat
+  after a drop; the two-seat invariant holds with no leak across a
+  drop/reconnect/third-join sequence. (ARENA-OPUS-034)
+- Confirmed already shipped (v01.04/v02.03, no new code needed): seat
+  release + shielded finally cleanup, dead-socket broadcast pruning,
+  bad-token 4001 close, model-error legal fallback.
+- Review fix: a binary WS frame no longer crashes the connection either
+  (code review #1, MEDIUM) -- the same graceful-error treatment as bad
+  JSON text.
+- Quality: 218 tests passing; mypy --strict clean; zero paid calls.
+
+Version 04.02.00 (2026-07-21)
+------------------------------
+Version v04.02 — Arena orchestration script. **v04 release gate**: phase v04
+(Agent-vs-Agent Orchestration) is now feature-complete.
+Git tag: opus-sonnet-v04.02.00 (namespaced — this branch's independent build).
+
+- scripts/run_arena.sh: one command creates a match, launches Ironclaw (X)
+  then waits for its join confirmation before launching Bastion (O) --
+  ordering, not a --symbol flag, makes seats deterministic. Prints the full
+  match id + explicit Observe-not-Join instructions; traps INT/TERM/EXIT to
+  clean up both agent processes; tails both logs until Ctrl-C.
+  (ARENA-OPUS-033)
+- Review: no findings.
+- Quality: 213 tests passing; mypy --strict clean; zero paid calls in the
+  suite (the script's real Haiku calls only happen in an actual demo run).
+
+Version 04.01.00 (2026-07-21)
+------------------------------
+Version v04.01 — Contrasting personas (the theater). First version of phase
+v04 (Agent-vs-Agent Orchestration) — nothing new in the protocol, composes
+v02 + v03.
+Git tag: opus-sonnet-v04.01.00 (namespaced — this branch's independent build).
+
+- profiles/aggressive.yml (Ironclaw, refined): sharpened toward
+  forcing/double-threat play, temperature 0.85 -> 0.9. (ARENA-OPUS-032)
+- profiles/cautious.yml (new — Bastion): wary, block-first defender; calm,
+  dry tone; temperature 0.4, memory_limit 6 -- contrasts Ironclaw on every
+  axis. Both drive the real create_llm_client. (ARENA-OPUS-032)
+- Review: no findings.
+- Quality: 206 tests passing; mypy --strict clean; zero paid calls.
+
+Version 03.03.00 (2026-07-21)
+------------------------------
+Version v03.03 — Chat & the Observer role. **v03 release gate**: the Web UI
+(Player & Observer) is now feature-complete against its phase DoD.
+Git tag: opus-sonnet-v03.03.00 (namespaced — this branch's independent build).
+
+- renderChat/renderSystem (web/app.js): chat bubbles labelled by seat symbol
+  (self left/blue, other right/pink), textContent-escaped, auto-scrolling;
+  system lines for match-start/game-over/errors (closes v03.01 review #2).
+  Chat form posts `{action:"chat"}` non-optimistically. (ARENA-OPUS-030)
+- renderPlayers's Observer branch labels both cards "Observer" when
+  mySymbol === null; board + chat were already read-only for an Observer.
+  End-to-end verified: an Observer join yields symbol:null and no seat.
+  (ARENA-OPUS-031)
+- Review fix: the server now refuses a seatless connection's `chat`
+  ("observers cannot chat"), matching submit_move's existing "no seat"
+  guard -- closes a gap where client-side suppression was the only guard
+  (code review #1, MEDIUM). Chat-message length bound deferred to v05.01.
+- Quality: 203 tests passing; mypy --strict clean; zero paid calls.
+
+Version 03.02.00 (2026-07-21)
+------------------------------
+Version v03.02 — Board & gameplay (Player role). A human can now play a full
+game in the browser.
+Git tag: opus-sonnet-v03.02.00 (namespaced — this branch's independent build).
+
+- renderBoard/renderPlayers/renderTurnBanner (web/app.js): the board renders
+  entirely from joined/state_update; each cell is playable only when empty,
+  the game is active, it's the human's turn, and the move is legal (real
+  disabled attribute); the active player card is highlighted; null-safe for
+  the Observer. (ARENA-OPUS-SONNET-028)
+- handleCellClick -> submit_move (never optimistic); off-turn / finished /
+  closed-socket / marked clicks are ignored. handleGameOver freezes the
+  board, derives + highlights the winning line (none on a draw), and shows
+  the result in status + banner. resetPlayState clears a second match in the
+  same tab (the §7 no-reload regression guard). (ARENA-OPUS-SONNET-029)
+- Review: no HIGH/MEDIUM; opponent-name label deferred to v05 polish.
+- Quality: 193 tests passing; mypy --strict clean; zero paid calls.
+
+Version 03.01.00 (2026-07-21)
+------------------------------
+Phase v03 (Web UI — Player & Observer) begins. Version v03.01 — static UI
+shell & connection.
+Git tag: opus-sonnet-v03.01.00 (namespaced — this branch's independent build).
+
+- Static Web UI served at /ui (StaticFiles html=True, dir resolved from the
+  repo root) with Cache-Control: no-store on /ui/* (exact mount match);
+  non-/ui routes unaffected. (ARENA-OPUS-SONNET-025)
+- The "arena" shell (web/index.html + web/styles.css) mirroring the design
+  source ui_prototype.html: app bar with the FULL (untruncated) match id, a
+  3x3 board of real <button> cells, player cards, and a chat panel;
+  responsive single-column collapse and a prefers-reduced-motion guard;
+  self-contained (system fonts, no CDN). (ARENA-OPUS-SONNET-026)
+- web/app.js: Host/Join/Observe -> REST lobby -> ONE WebSocket; a
+  connection-status indicator; setMatchIdDisplay shows the full id (no
+  truncation anywhere); a routeEvent dispatcher with a case per server event
+  (board/chat rendering land in v03.02/03); isGameActive reset guard for a
+  second match in the same tab. (ARENA-OPUS-SONNET-027)
+- Review: no findings.
+- Quality: 186 tests passing; mypy --strict clean; the UI never touches a
+  model -- zero paid calls.
+
+Version 02.03.00 (2026-07-21)
+------------------------------
+Version v02.03 — Agent event loop & decision play. THE v02 RELEASE GATE: phase
+v02 (Agent Client — Haiku) is functionally complete.
+Git tag: opus-sonnet-v02.03.00 (namespaced — this branch's independent build).
+
+- Runnable agent CLI: `python agent/agent.py --match-id <id> --profile
+  profiles/aggressive.yml` — .env key loading (python-dotenv), profile ->
+  create_llm_client, REST join, WS session, clean exit on room close. Runtime
+  deps: httpx, websockets, python-dotenv. (ARENA-OPUS-SONNET-022)
+- choose_move: decide -> validate against valid_moves -> retry (<=3, with the
+  rejection fed back into the retry prompt) -> random-LEGAL fallback, so a
+  hallucinated move never stalls the match. (ARENA-OPUS-SONNET-023)
+- AgentSession + run loop: acts only when current_turn == its symbol (never on
+  the terminal state_update or as an observer), records opponent moves + chat
+  into the bounded memory window, sends one {chat, submit_move} per turn.
+  Integration-proven against the real server with a scripted mock LLM, incl.
+  the illegal->retry path. (ARENA-OPUS-SONNET-024)
+- Review: no HIGH/MEDIUM findings; reconnect stays v05.01 scope, .env CWD path
+  documented for v05.03.
+- Quality: 176 tests passing; mypy --strict clean; the LLM is mocked in every
+  test -- zero paid calls.
+
+Version 02.02.00 (2026-07-21)
+------------------------------
+Version v02.02 — Profile, persona, memory & prompt: the MVP Agent Designer
+surface.
+Git tag: opus-sonnet-v02.02.00 (namespaced — this branch's independent build).
+
+- AgentProfile (agent/profile.py): a strictly-typed persona/model/memory config
+  loaded from YAML — name, system_prompt, model_type (feeds create_llm_client;
+  default "haiku"), temperature (0..1), memory_limit (>0); unknown keys
+  rejected; clear errors for missing/invalid/non-mapping files. First sample
+  persona: profiles/aggressive.yml ("Ironclaw"). (ARENA-OPUS-SONNET-019)
+- MemoryWindow (agent/memory.py): a bounded rolling window of recent moves +
+  chat, oldest evicted first; events() returns an oldest-first copy.
+  (ARENA-OPUS-SONNET-020)
+- build_prompt (agent/prompt.py): persona + recent events + the pushed board
+  (empty cells shown by index) + legal moves -> one decision prompt whose
+  reply contract matches AgentResponse{move, comment}. (ARENA-OPUS-SONNET-021)
+- Code review (same cycle): opponent chat is now explicitly framed as banter,
+  never instructions (prompt-injection guard), and remembered chat is
+  length-bounded so a huge message can't bloat later prompts.
+- Quality: 162 tests passing; mypy --strict clean; zero model calls anywhere.
+
+Version 02.01.00 (2026-07-21)
+------------------------------
+Phase v02 (Agent Client — Haiku) begins. Version v02.01 — the LLMClient seam &
+the Anthropic Haiku client. The model is introduced behind a vendor-agnostic
+seam and is always mocked in tests: zero paid calls.
+Git tag: opus-sonnet-v02.01.00 (namespaced — this branch's independent build).
+
+- LLMClient seam (agent/llm.py): the abstract, vendor-agnostic client — one async
+  generate_structured_response(prompt, schema) returning a validated instance —
+  plus AgentResponse{move, comment} (agent/schemas.py). Contract test pins the
+  seam; agent/ imports nothing from server/. (ARENA-OPUS-SONNET-016)
+- AnthropicHaikuClient: the only vendor implementation, via the async Anthropic
+  SDK; structured output forced with messages.parse(output_format=schema) and
+  returned validated (raises if absent). Model id is a single constant,
+  claude-haiku-4-5. (ARENA-OPUS-SONNET-017)
+- create_llm_client(model_type, api_key, temperature) config-driven dispatch +
+  fail-fast ANTHROPIC_API_KEY handling; the key lives only in the agent process
+  and is never logged. (ARENA-OPUS-SONNET-018)
+- Quality: 135 tests passing; mypy --strict clean; no paid model call anywhere.
+
+Version 01.04.00 (2026-07-21)
+------------------------------
+Phase v01.04 — WebSocket protocol & move authority. This completes v01: two raw
+WebSocket clients can now play a full, server-validated Tic-Tac-Toe game with chat
+to game_over.
+Git tag: opus-sonnet-v01.04.00 (namespaced — this branch's independent build).
+
+- WebSocket protocol layer (server/websockets.py): the ConnectionManager (per-match
+  sockets + owner map, a serialize-once broadcast that prunes a dead socket, send_to,
+  close_room) and pure builders for the five server->client events (joined,
+  state_update, chat_message, game_over, error) plus inbound {action, payload} parsing.
+  (ARENA-OPUS-SONNET-012)
+- WS endpoint: GET /ws/match/{id}?token= validates the token (bad/missing -> close 4001),
+  connects, claims/reports the seat, sends joined, runs the receive loop, and cleans up
+  in a finally block (disconnect + shielded release_seat -- a client-initiated drop can
+  surface as task cancellation, not a clean WebSocketDisconnect; found and fixed during
+  this version's own execution). (ARENA-OPUS-SONNET-013)
+- Chat: a chat action persists the message and broadcasts chat_message to the room.
+  (ARENA-OPUS-SONNET-014)
+- Move authority (server/main.py, §5.4): every submit_move is re-validated server-side --
+  seat, turn, and legality. Illegal / out-of-turn / no-seat moves get an error. A legal
+  move persists and broadcasts state_update (current_turn null on the game-ending move,
+  with last_move); on game over the server broadcasts game_over and closes the room, and
+  marks the match finished with its result (Repository.finish_match). (ARENA-OPUS-SONNET-015)
+- Quality: 115 tests passing; mypy --strict clean; no model touched and no paid calls
+  anywhere (the LLMClient seam arrives in v02.01).
+
+Version 01.03.00 (2026-07-21)
+------------------------------
+Phase v01.03 — Match, seats & lobby REST.
+Git tag: opus-sonnet-v01.03.00 (namespaced — this branch's independent build).
+
+- FastAPI app: server/main.py builds the app via create_app(...) with a lifespan
+  that runs init_models on startup, GET /api/v1/health, and a per-request
+  Repository dependency; server/schemas.py adds the lobby request/response
+  models. The app is now runnable with `uvicorn server.main:app`.
+  (ARENA-OPUS-SONNET-008)
+- Auth tokens: server/auth.py issues an opaque token that IS the
+  participant_id, with the frozen IssuedToken value object and validate_token
+  (None for unknown/other-match tokens). Identity is keyed by token, never by
+  display name. (ARENA-OPUS-SONNET-009)
+- Lobby REST: POST /api/v1/lobby/match creates a match and returns its id;
+  POST /api/v1/lobby/join returns 404 for an unknown match, else records the
+  participant (carrying is_spectator) and returns the token.
+  (ARENA-OPUS-SONNET-010)
+- Seat helpers: server/match.py provides thin assign_symbol / release_seat
+  wrappers over the Repository. End-to-end tests prove the seat-by-token
+  identity against real join tokens: two players get X/O, a third gets no
+  seat, a spectator is never seated, and two joins named "Human" get distinct
+  seats. (ARENA-OPUS-SONNET-011)
+- Quality: 81 tests passing; mypy --strict clean; no paid model calls anywhere
+  (lobby is REST + DB only; the LLMClient seam arrives in v02.01).
+
+Version 01.02.00 (2026-07-21)
+------------------------------
+Phase v01.02 — Persistence layer (SQLite). The durable substrate every later
+phase reads/writes through the Repository.
+Git tag: opus-sonnet-v01.02.00 (namespaced — this branch's independent build).
+
+- Async SQLite persistence: an async SQLAlchemy engine over sqlite+aiosqlite
+  (config-driven URL), NullPool (avoids pooled-connection flakiness across many
+  short-lived test engines), a connect-time PRAGMA foreign_keys=ON, and
+  init_models(). The four ORM tables (matches, participants, moves,
+  chat_messages) with match_id foreign keys and UNIQUE(match_id, symbol);
+  opaque move payloads stored as JSON so their type round-trips.
+  (ARENA-OPUS-SONNET-004)
+- Repository: the single access seam for durable state — create_match,
+  get_match, add_participant, log_move, log_chat. State survives a process
+  restart. (ARENA-OPUS-SONNET-005)
+- Seat rule (§5.2): assign_symbol / release_seat, keyed by token not display
+  name — spectators never get a seat; a third player gets none; reconnects are
+  idempotent; a race between two concurrent assignments resolves (not just
+  detects) to distinct symbols via a bounded retry (code review fix).
+  (ARENA-OPUS-SONNET-006)
+- Reconstruction: reconstruct_game replays the ordered move log through a
+  fresh TicTacToe (no serialize step on GameInterface); current_turn is
+  move-count parity, None once over. (ARENA-OPUS-SONNET-007)
+- Quality: 62 tests passing; mypy --strict clean; no paid model calls anywhere
+  (persistence is pure server/DB logic — the LLMClient seam arrives in v02.01).
+
+Version 01.01.00 (2026-07-21)
+------------------------------
+Phase v01.01 — Project skeleton & the game engine. The first stable seam
+(GameInterface) plus its first concrete implementation, verified entirely in
+isolation.
+Git tag: opus-sonnet-v01.01.00 (namespaced — this branch's independent build).
+
+- Project skeleton: pyproject.toml (pytest + strict mypy config, plus
+  [build-system]/[tool.setuptools] pinning the three installable packages) and
+  the games/server/agent package layout, with a smoke test proving the
+  toolchain runs and the packages import. (ARENA-OPUS-SONNET-001)
+- GameInterface seam: the abstract game plug-in — get_state, get_valid_moves,
+  apply_move, is_game_over — with a contract test pinning the §4.1 method
+  signatures and abstractness. (ARENA-OPUS-SONNET-002)
+- TicTacToe engine behind the seam: 9-cell board, 8 winning lines, "draw" on a
+  full board; apply_move is the sole legality authority and never raises on
+  bad input (out-of-range / occupied / wrong-type). Ships an exhaustive unit
+  suite (a win on every line, draw detection, illegal rejection per category,
+  valid-moves shrink invariant). (ARENA-OPUS-SONNET-003)
+- Quality: 36 tests passing; mypy --strict clean on source and tests; no paid
+  model calls anywhere (pure logic — the LLMClient seam arrives in v02.01).
