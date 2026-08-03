@@ -18,8 +18,10 @@ from typing import Any
 
 import httpx
 import websockets
+from anthropic import APIError
+from pydantic import ValidationError
 
-from agent.llm import LLMClient, MissingAPIKeyError, create_llm_client
+from agent.llm import LLMClient, LLMResponseError, MissingAPIKeyError, create_llm_client
 from agent.memory import MemoryWindow
 from agent.profile import AgentProfile, ProfileError
 from agent.prompt import build_prompt
@@ -57,7 +59,14 @@ async def decide_move(
             reply: AgentResponse = await client.generate_structured_response(
                 prompt, AgentResponse
             )
-        except Exception:  # noqa: BLE001 - a bad turn must not end the match
+        except (LLMResponseError, ValidationError, httpx.HTTPError, APIError) as exc:
+            # Narrow on purpose. A blanket `except Exception` here would swallow a
+            # TypeError or AttributeError from our own code and report it as "the model
+            # had a bad turn" -- the agent would keep playing random legal moves and the
+            # real defect would never surface. These four are the failures a *model call*
+            # genuinely produces: an unparseable reply, a schema violation, a transport
+            # error, or an API error.
+            print(f"[decide] attempt failed: {type(exc).__name__}", flush=True)
             continue
         comment = reply.comment or comment
         if reply.move in valid_moves:

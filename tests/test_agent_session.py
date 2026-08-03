@@ -13,6 +13,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -24,7 +25,7 @@ from agent.agent import (
     main,
     run,
 )
-from agent.llm import LLMClient
+from agent.llm import LLMClient, LLMResponseError
 from agent.profile import AgentProfile
 from agent.schemas import AgentResponse
 from server.main import API_PREFIX, app
@@ -83,13 +84,15 @@ async def test_the_fallback_is_always_a_legal_move() -> None:
 
 async def test_a_client_failure_counts_as_a_failed_attempt() -> None:
     """v02.01 review #2: an SDK error must not end the match."""
-    client = ScriptedClient(RuntimeError("429"), AgentResponse(move=3, comment="after"))
+    client = ScriptedClient(
+        httpx.HTTPError("429 rate limited"), AgentResponse(move=3, comment="after")
+    )
     move, _ = await decide_move(client, "p", [3, 4])
     assert move == 3
 
 
 async def test_total_failure_still_yields_a_legal_move() -> None:
-    client = ScriptedClient(RuntimeError("down"))
+    client = ScriptedClient(LLMResponseError("model returned nothing parseable"))
     move, comment = await decide_move(client, "p", [8], rng=random.Random(1))
     assert move == 8 and comment
 
@@ -234,3 +237,21 @@ def test_the_agent_joins_a_real_match_over_rest(client: TestClient) -> None:
         json={"match_id": session.match_id, "player_name": session.player_name},
     )
     assert response.status_code == 200 and response.json()["token"]
+
+
+# ── code review #1: only model failures count as a failed turn ──────────────
+
+
+async def test_a_bug_in_our_own_code_is_not_swallowed_as_a_retry() -> None:
+    """A blanket `except Exception` would hide a real defect.
+
+    The agent would keep playing random legal moves and look like it was merely
+    unlucky with the model, while a TypeError in our own code went unreported.
+    """
+
+    class Broken(LLMClient):
+        async def generate_structured_response(self, prompt: str, schema: type[Any]) -> Any:
+            raise AttributeError("a genuine bug in our code")
+
+    with pytest.raises(AttributeError, match="genuine bug"):
+        await decide_move(Broken(), "p", [0, 1])
