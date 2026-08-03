@@ -66,6 +66,11 @@ per-phase form.
 
 ### Step 0: Scope, baseline, plan — and start the clock
 
+0. **Check for an unfinished previous run — before anything else.** If `codegen/runs/current` names a
+   run with no terminal event, show what it was (command, start time, last released version, what it
+   was mid-way through) and **ask**: resume it (same `run_id`, same log, emit `run.resumed`) or start a
+   new run (close the old with `run.aborted` `reason: "superseded"`, link the new one via `resumes`)?
+   Never decide silently — the choice determines whether this phase's timings belong to one run or two.
 1. **Parse the selector list.** Split the argument on commas and trim whitespace; each element is a
    **phase** (`vXX`), a **version** (`vXX.YY`), or a **range** (`vXX-vYY`). **No argument → all**
    versions that have an issues file. Record whether `--no-harden` was passed (it applies to the whole

@@ -205,15 +205,24 @@ with the git context, refuse a second concurrent run.
 - Run id `run-YYYYMMDD-HHMMSS` from UTC. Create `codegen/runs/<id>/`, write `codegen/runs/current`.
 - `run.start.data.git` from `git rev-parse --abbrev-ref HEAD`, `git rev-parse --short HEAD`,
   `git remote get-url origin`. Failures degrade to `null`, never abort.
-- **Refuse to start** if `current` names a run with no terminal event — print the offending run id and
-  exit non-zero (architecture §9.2: concurrent runs are unsupported, and must fail loudly, not corrupt).
+- **Detect an unterminated run** and surface it rather than refusing: `pending() -> RunSummary | None`
+  returns the interrupted run's command, start time, last released version and current node, so the
+  orchestrator can ask the user (architecture §9.3). Provide both outcomes:
+  `resume(run_id) -> None` (append `run.resumed` with `gap_s`) and
+  `supersede(run_id) -> None` (append `run.aborted` `reason: "superseded"`, then `start(resumes=…)`).
+- **Never auto-decide.** The library exposes the choice; the skill asks. Refusing outright would block
+  the common case — a run interrupted by a failed gate is normal, not an error.
 
 **Dependencies:** TRK-003
 
 **Acceptance criteria:**
 - [ ] `start()` creates the directory, the pointer, and a schema-valid `run.start`.
-- [ ] Starting while an unterminated run exists exits non-zero and writes no new run directory.
-- [ ] Starting when the previous run has `run.end` succeeds.
+- [ ] `pending()` returns a populated summary when an unterminated run exists, `None` otherwise.
+- [ ] `resume()` appends `run.resumed` with a correct `gap_s` and does **not** create a new run directory.
+- [ ] `supersede()` closes the old run with `run.aborted` and links the new one via `resumes`.
+- [ ] Elapsed excludes idle: a run resumed after a 1-hour gap reports `idle_s ≈ 3600` and an
+      `elapsed_s` that does not include it.
+- [ ] Starting when the previous run has `run.end` succeeds with no prompt.
 - [ ] Git context is populated on this repo; in a non-git temp dir the fields are `null` and no
       exception escapes.
 

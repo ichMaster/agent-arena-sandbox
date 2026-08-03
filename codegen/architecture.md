@@ -97,7 +97,8 @@ not silently repaired.
 
 | Type | status | `data` (required) |
 |---|---|---|
-| `run.start` | — | `command`, `plan` (ordered version ids), `baseline` `{tests,mypy_errors}`, `git` `{branch,head_sha,remote}` |
+| `run.start` | — | `command`, `plan` (ordered version ids), `baseline` `{tests,mypy_errors}`, `git` `{branch,head_sha,remote}`, `resumes?` (prior run id) |
+| `run.resumed` | — | `gap_s` — wall-clock idle since the last event |
 | `run.estimate` | — | `source` (`estimated`\|`counted`), `versions` `[{id,issues_low,issues_high,points_low,points_high,duration_s}]`, `total`, `rate_basis` |
 | `run.end` | ok/fail | `versions_done`, `issues_done` |
 | `run.aborted` | fail | `reason` |
@@ -362,11 +363,32 @@ is not a security model.
 
 | Failure | Behaviour |
 |---|---|
-| Run killed mid-flight | Unmatched `*.start`. A `Stop` hook writes `run.aborted`; if even that is missed, the dashboard marks the run stale after no events for 10 min. |
+| Run killed mid-flight | Unmatched `*.start`. A `Stop` hook writes `run.aborted`; if even that is missed, the next orchestrator invocation finds the unterminated run and **asks** whether to resume or supersede it (§9.3). The dashboard marks a run stale after 10 min without events. |
 | Skill forgets an emit | Gap is invisible in the log itself — caught by §10.4 reconciliation against hooks. |
-| Two runs concurrently | **Unsupported.** `runs/current` is a single pointer. The second `run.start` should refuse when `current` names a run with no `run.end`. |
+| Two runs concurrently | **Unsupported.** `runs/current` is a single pointer. An orchestrator finding an unterminated run treats it as an interrupted run to resume or supersede (§9.3), not as a live one to run beside. |
 | Disk full | `emit` fails silently, pipeline continues, `state.counts` stop advancing. |
 | Clock skew across emitters | `ts` may go backwards; ordering uses line order (§2.2), so this is cosmetic. |
+
+### 9.3 Resuming an interrupted run
+
+A run that stops without a terminal event is not an error state to refuse — it is the **normal**
+outcome of a failed gate, a killed session, or a machine going to sleep. The next orchestrator
+invocation detects it and **asks the user** which it is; it never decides alone, because both wrong
+answers are costly:
+
+| Choice | Mechanics | Cost of getting it wrong |
+|---|---|---|
+| **Resume** | Same `run_id`, same log. Append `run.resumed` carrying `gap_s`. | Resuming when a fresh run was meant folds an unrelated session's timings into this one. |
+| **New** | `run.aborted` (`reason: "superseded"`) on the old; new run carries `resumes: <old-id>`. | Splitting when resume was meant leaves "how long did v01 take?" unanswerable — the phase spans two runs. |
+
+**Elapsed excludes the gap.** On `run.resumed` the reducer adds `gap_s` to a per-run `idle_s`
+accumulator and subtracts it from every elapsed figure. A run paused overnight must not report 14 hours
+of velocity — the wall-clock span and the *working* span are different numbers, and every metric here
+wants the second one. `state.json` carries both (`elapsed_s`, `idle_s`) so the distinction stays visible
+rather than baked away.
+
+`resumes` makes the chain queryable without merging it: cross-run comparison treats linked runs
+separately by default and can stitch them on request.
 
 ---
 

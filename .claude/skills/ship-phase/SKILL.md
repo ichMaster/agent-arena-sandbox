@@ -79,6 +79,19 @@ the plan; there is no per-phase form.
 
 ### Step 0: Scope, baseline, and the phase → version plan
 
+0. **Check for an unfinished previous run — before anything else.** If `codegen/runs/current` names a
+   run whose log has no terminal event (`run.end` / `run.aborted`), that run stopped without closing.
+   **Show what it was** — its command, when it started, the last version it released, and what it was
+   in the middle of — then **ask which this is**:
+   - **Resume it** → keep the same `run_id` and keep appending to the same log; emit `run.resumed`.
+     The plan is recomputed normally, so already-released versions skip themselves and the run picks up
+     where it stopped. Timings stay attributed to one run, with the idle gap excluded (see below).
+   - **A new run** → close the old one with `run.aborted` (`reason: "superseded"`), then start fresh
+     with `resumes: <old-run-id>` on `run.start` so the two stay linked without being merged.
+
+   Never decide this silently. Resuming when the user meant a fresh run corrupts that run's timings;
+   starting fresh when they meant resume splits one phase across two runs and makes "how long did v01
+   take" unanswerable. This is exactly the kind of genuine decision this skill pauses for.
 1. **Parse the selector list.** Split the argument on commas and trim whitespace. Each element is a
    **phase** (`vXX`), a **version** (`vXX.YY`), or a **range** (`vXX-vYY`); a single element is just a
    list of one. Record whether `--no-harden` was passed (it applies to the whole plan).

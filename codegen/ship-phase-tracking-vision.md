@@ -170,7 +170,7 @@ per-type `data` requirements, and the append/concurrency contract are in
 
 | Group | Types |
 |---|---|
-| Run | `run.start` · `run.end` · `run.aborted` |
+| Run | `run.start` · `run.resumed` · `run.end` · `run.aborted` |
 | Phase | `phase.start` · `phase.end` |
 | Version | `version.start` · `version.decomposed` · `version.end` · `version.skipped` |
 | Estimate | `run.estimate` — once, before anything is decomposed |
@@ -572,22 +572,22 @@ Steps 1–3 already yield everything `ship-solution`'s end-of-run report contain
 
 ## 8. Open questions
 
-- **Run context propagation.** `ship-phase` invokes sub-skills through the Skill tool; a sub-skill has
-  no inherent knowledge of the run it belongs to. The `codegen/runs/current` pointer is the proposed
-  answer, but it makes concurrent runs unrepresentable. Acceptable for now — worth naming.
-- **Unterminated spans.** A run killed mid-flight leaves `*.start` with no matching `*.end`. Either the
-  dashboard infers abandonment from staleness, or a `Stop` hook writes `run.aborted`. The hook is more
-  honest.
+- ~~**Run context propagation.**~~ **Settled:** the `codegen/runs/current` pointer, read by any
+  sub-skill or hook. It makes concurrent runs unrepresentable, which is accepted — an unterminated run
+  is treated as interrupted, not as a peer (architecture §9.3).
+- ~~**Unterminated spans.**~~ **Settled:** a `Stop` hook writes `run.aborted` (TRK-017), and the next
+  orchestrator invocation asks whether to resume or supersede any run that slipped through
+  (architecture §9.3).
 - **Cost and tokens** are not observable from inside the run. If they matter, they have to come from
   outside — and may simply be out of scope.
 - **Observer effect.** Emission instructions lengthen every skill file, and skill files are prompts.
   Adding a hundred lines of tracking instruction could measurably change what gets generated. Keep
   emit instructions to one line per site, and treat any growth in skill length as a cost.
-- **What counts as a "run"** when a phase is resumed after a failure — a new run linked to the old, or
-  a continuation of it? Affects every cross-run comparison.
-- **Dependencies.** `codegen/dashboard/` needs FastAPI + uvicorn, but `pyproject.toml` is *generated* by
-  the run and would overwrite anything added to it. The tracker therefore cannot declare its
-  dependencies there. Options: its own `codegen/requirements.txt` and a separate venv, a zero-dependency
-  stdlib `http.server` instead of FastAPI, or accepting that the dashboard only runs when the generated
-  project happens to be installed. The first keeps the containment rule intact; the third quietly breaks
-  it, since the tracker would then depend on the tree it is watching.
+- ~~**What counts as a "run"** when a phase is resumed after a failure?~~ **Settled: the user decides,
+  per occurrence.** Both answers are right in different situations and neither is safely inferable, so
+  the orchestrator's first step detects an unterminated run and asks — resume it (same `run_id`, gap
+  excluded from elapsed) or start a new one linked by `resumes`. Architecture §9.3.
+- ~~**Dependencies.**~~ **Settled:** `tracker/` and `hooks/` are stdlib-only (so nothing on the
+  pipeline's critical path can fail to import), and `dashboard/` gets its own `codegen/requirements.txt`
+  and venv — never `pyproject.toml`, which the run regenerates. See the decisions table in
+  [implementation-plan.md](implementation-plan.md).
