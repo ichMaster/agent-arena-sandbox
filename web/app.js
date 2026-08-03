@@ -184,6 +184,18 @@ function routeEvent({ event, payload }) {
   }
 }
 
+// Guards against every non-actionable state (web_ui_specification.md §6.3): the socket
+// isn't OPEN, the game isn't active, or the cell is disabled. Never renders
+// optimistically — the board only updates from the server's state_update.
+function handleCellClick(index) {
+  if (!ws || ws.readyState !== WebSocket.OPEN || !isGameActive) return;
+
+  const cell = document.getElementById(`cell-${index}`);
+  if (!cell || cell.disabled) return;
+
+  ws.send(JSON.stringify({ action: "submit_move", payload: { move: index } }));
+}
+
 function init() {
   document.getElementById("host-btn").addEventListener("click", () => {
     hostMatch();
@@ -194,6 +206,13 @@ function init() {
   document.getElementById("observe-btn").addEventListener("click", () => {
     joinMatch(true);
   });
+
+  for (let i = 0; i < 9; i++) {
+    const cell = document.getElementById(`cell-${i}`);
+    if (cell) {
+      cell.addEventListener("click", () => handleCellClick(i));
+    }
+  }
 }
 
 init();
