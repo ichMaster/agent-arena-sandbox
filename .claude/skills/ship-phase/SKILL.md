@@ -1,6 +1,6 @@
 ---
 name: ship-phase
-description: Full delivery pipeline over the roadmap. For each phase (vXX) run its versions (vXX.YY) in order - RECONCILE with the real implementation, generate-issues, upload-issues, execute-issues, review-and-fix-issues, release-version vXX.YY.00 (release per VERSION). At the END of the phase, an OPT-IN HARDEN sweep (--harden flag or explicit user approval) fixes the deferred HIGH/MEDIUM findings, then the phase is reported to chat. Gated; stops on failure; surfaces real decisions.
+description: Full delivery pipeline over the roadmap. Takes one selector or a comma-separated LIST of phases/versions/ranges (e.g. v01,v03.02,v04-v05), expanded and de-duplicated into a single roadmap-ordered plan. For each phase (vXX) run its versions (vXX.YY) in order - RECONCILE with the real implementation, generate-issues, upload-issues, execute-issues, review-and-fix-issues, release-version vXX.YY.00 (release per VERSION). At the END of the phase, an OPT-IN HARDEN sweep (--harden flag or explicit user approval) fixes the deferred HIGH/MEDIUM findings, then the phase is reported to chat. Gated; stops on failure; surfaces real decisions.
 ---
 
 # Skill: Ship Phase — the full delivery pipeline
@@ -20,8 +20,10 @@ end-of-phase** step, never automatic.
 **The loop:**
 
 ```
-for each PHASE vXX (in roadmap order):
-    for each VERSION vXX.YY in the phase (in order):
+PLAN = selectors → versions → de-duplicated → sorted into roadmap order → grouped by phase
+
+for each PHASE vXX in PLAN (in roadmap order):
+    for each VERSION vXX.YY of that phase in PLAN (in order):
         0. RECONCILE   — ground this version in the real implementation + all prior fixes
         1. generate-issues vXX.YY
         2. upload-issues @spec/implementation/vXX.YY-issues.md
@@ -43,8 +45,11 @@ opt-in end-of-phase hardening sweep, and releases per version; each sub-skill ke
 ## Usage
 
 ```
-/ship-phase <phase|version|range> [--harden]
+/ship-phase <selector>[,<selector>…] [--harden]
 ```
+
+A **selector** is a phase (`vXX`), a version (`vXX.YY`), or a range (`vXX-vYY`). Pass **one or a
+comma-separated list of any mix** — the whole list is expanded into a single ordered plan.
 
 - `/ship-phase v02` — ship **phase v02**: every version in it (v02.01 → v02.02 → v02.03), each through
   its five steps incl. its own release; at the phase's end **ask** whether to run the HARDEN sweep;
@@ -55,23 +60,66 @@ opt-in end-of-phase hardening sweep, and releases per version; each sub-skill ke
   unless `--harden` is passed or the user approves when asked at the end.
 - `/ship-phase v02-v03` — ship phase v02, then phase v03 (HARDEN asked/applied per phase), then an
   overall summary.
+- `/ship-phase v01,v03,v05` — a **list of phases**, shipped in roadmap order.
+- `/ship-phase v01.01,v01.03,v02` — a **mixed list**: two individual versions plus a whole phase.
+- `/ship-phase v01-v02,v04.01 --harden` — a range plus a single version, hardening pre-approved.
+
+Whitespace around commas is ignored, so `v01, v03` works. `--harden` applies to **every** phase in the
+plan; there is no per-phase form.
 
 ## Instructions
 
 ### Step 0: Scope, baseline, and the phase → version plan
 
-1. Normalize the argument to a **phase** (`vXX`), a **version** (`vXX.YY`), or a **range** (`vXX-vYY`);
-   record whether `--harden` was passed.
-2. Read [spec/roadmap.md](../../../spec/roadmap.md). Build the plan: for each phase in scope, its
-   ordered version list (`### vXX.YY` headings under `## vXX`, in file order).
-3. Confirm we are on the working dev branch and the tree is clean; establish a **green baseline**
+1. **Parse the selector list.** Split the argument on commas and trim whitespace. Each element is a
+   **phase** (`vXX`), a **version** (`vXX.YY`), or a **range** (`vXX-vYY`); a single element is just a
+   list of one. Record whether `--harden` was passed (it applies to the whole plan).
+2. **Expand to a version set.** Read [spec/roadmap.md](../../../spec/roadmap.md) and resolve every
+   selector down to individual versions (`### vXX.YY` headings under `## vXX`, in file order):
+   a phase → all its versions; a range → all versions of all phases it spans; a version → itself.
+   Then:
+   - **De-duplicate.** Overlapping selectors (`v01,v01.02`) contribute each version once.
+   - **Sort into roadmap order**, regardless of the order given. `/ship-phase v03,v01` ships v01 first.
+     This is not cosmetic: the pipeline's whole premise is that each version is generated against the
+     previous one's real, released code, so executing out of roadmap order would reconcile against a
+     codebase that doesn't exist yet.
+   - **If the sorted order differs from what was typed, say so** in the plan confirmation — the user
+     asked for one order and is getting another.
+   - **Group the versions back under their phases** for the per-phase HARDEN and reporting.
+3. **Check the plan for gaps.** A list may legitimately skip versions (`v01,v03` omits all of v02), but
+   a skipped version is a dependency hole: v03's issues reconcile against code v02 never wrote. Before
+   confirming, **list the omitted versions explicitly and flag the gap** — then let the user decide.
+   A gap is a warning, never a silent reorder or a refusal. Versions already shipped (step 5) are not
+   gaps; they are satisfied dependencies.
+4. **Reject nothing silently.** If a selector doesn't resolve to a real roadmap phase/version — a typo,
+   an out-of-range `v09`, a reversed range (`v03-v01`) — name the offending element and ask. Never drop
+   an unparseable element and proceed with the rest.
+5. Confirm we are on the working dev branch and the tree is clean; establish a **green baseline**
    (`pytest` + strict `mypy`). Never start on a red suite — fix a clear flake first or surface it.
-4. **Skip already-shipped versions** (release tag `vXX.YY.00` exists). A version partially done
+6. **Skip already-shipped versions** (release tag `vXX.YY.00` exists). A version partially done
    (issues/report exist but no tag) resumes from its remaining steps — each sub-skill is idempotent
    (`generate` asks overwrite, `upload` dedupes, `execute` skips closed issues, `release` refuses a
    downgrade).
-5. **Confirm the plan once**, then run — do not re-confirm before each sub-step; pause only for the
-   genuine blockers in the rules below.
+7. **Confirm the plan once** — show it as the resolved, ordered version list grouped by phase, with any
+   reordering, gaps, or already-shipped skips called out. Then run: do not re-confirm before each
+   sub-step; pause only for the genuine blockers in the rules below.
+
+**Worked example** — `/ship-phase v03.02,v01,v01.02 --harden`:
+
+```
+selectors : v03.02 · v01 · v01.02
+expanded  : v03.02 | v01.01 v01.02 v01.03 v01.04 | v01.02
+de-duped  : v01.02 appears twice → once
+ordered   : v01.01 → v01.02 → v01.03 → v01.04 → v03.02      (typed order was v03 first)
+
+PLAN
+  v01  v01.01, v01.02, v01.03, v01.04   → HARDEN (pre-approved) → report
+  v03  v03.02                            → HARDEN (pre-approved) → report
+
+⚠ reordered: v03.02 was listed first, but ships last — roadmap order is required.
+⚠ gaps: all of v02 (v02.01–v02.03) and v03.01 are not in the plan. v03.02's issues will
+  reconcile against code those versions never wrote. Proceed?
+```
 
 ### Step 1: For each phase → for each version — the five steps, gated
 
@@ -166,4 +214,8 @@ shipped, versions skipped as already-released, anything stopped early and what r
   and adds the gating; no logic of its own. Each sub-skill keeps its discipline — one issue = one
   commit, seam changes carry `spec/architecture.md` + contract test, IDs stay in this branch's
   `ARENA-###` namespace, releases use unprefixed `vXX.YY.ZZ` tags, every line generated fresh.
-- **Ask on a bad target.** If the argument doesn't resolve to a real roadmap phase/version, ask.
+- **Ask on a bad target.** If **any** element of the selector list doesn't resolve to a real roadmap
+  phase/version, name that element and ask — never silently drop it and ship the rest.
+- **The plan is roadmap-ordered, always.** A selector list is a *set* of versions, not a running order.
+  Sort it, de-duplicate it, and surface both the reordering and any dependency gaps at confirmation
+  time. Honoring a user-supplied order over roadmap order would break the reconcile premise.
