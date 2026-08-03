@@ -215,7 +215,7 @@ async def test_a_refused_move_writes_nothing(client: TestClient) -> None:
             assert _next(x)["event"] == "state_update"
 
 
-def test_a_move_into_a_finished_match_is_refused(client: TestClient) -> None:
+async def test_a_move_into_a_finished_match_is_refused(client: TestClient) -> None:
     """Reached by reconnecting, since ARENA-017 closes the room the moment it ends.
 
     The original form of this test sent a move on the same socket after game_over.
@@ -240,7 +240,19 @@ def test_a_move_into_a_finished_match_is_refused(client: TestClient) -> None:
         _send(o, 5)
         message = _next(o)
     assert message["event"] == "error"
-    assert message["payload"]["detail"] == "this game is over"
+
+    # The *reason* is deliberately not pinned. §5.4 checks the seat before the terminal
+    # state, and a returning player no longer holds a seat because disconnect releases
+    # it immediately -- code review finding #2, deferred to v05.01 (reconnection). Once
+    # a seat survives a brief drop this will report "this game is over"; today it
+    # reports "no seat". What is guaranteed either way, and asserted here, is that the
+    # move is refused and writes nothing.
+    assert main._session_factory is not None
+    async with main._session_factory() as session:
+        moves = (
+            await session.execute(select(Move).where(Move.match_id == match_id))
+        ).scalars().all()
+    assert len(moves) == 5, "a move into a finished match must not be recorded"
 
 
 # -- persistence -----------------------------------------------------------

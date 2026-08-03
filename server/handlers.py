@@ -62,8 +62,12 @@ async def handle_submit_move(
     """The §5.4 authority flow, in order."""
     repository = Repository(session)
 
-    # 1. Seat. `None` covers observer, match full, unknown token and a lost race alike.
-    symbol = await repository.assign_symbol(match_id, token)
+    # 1. Seat -- READ, never assign. Seats are claimed once at connect (§6.2 `joined`);
+    #    assigning here would let the act of submitting a move grant a seat to a client
+    #    who had none, so a spectator-turned-lurker could take over a game in progress
+    #    the moment a player's connection blipped. An authority check must not change
+    #    what it is checking. `None` still covers observer, no seat, and unknown token.
+    symbol = await repository.seat_of(match_id, token)
     if symbol is None:
         await manager.send_to(websocket, error_event("you have no seat in this match"))
         return

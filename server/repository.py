@@ -153,6 +153,31 @@ class Repository:
                 return symbol
         return None
 
+    async def seat_of(self, match_id: str, token: str) -> str | None:
+        """The seat this token **already holds**, without granting one.
+
+        The read-only counterpart of :meth:`assign_symbol`. Claiming happens once, at
+        connect; the move flow only needs to know what was claimed. Using the assigning
+        form there let the act of submitting a move seat a client who had none, so an
+        authority check changed the thing it was checking.
+
+        Reads the columns rather than loading the ORM object on purpose. A WS
+        connection keeps one session for its whole life (§10), and an entity already in
+        its identity map is returned with the attributes it was loaded with -- so a seat
+        claimed or released by another connection would be answered from a stale
+        instance. A column query always reflects the database.
+        """
+        result = await self._session.execute(
+            select(Participant.symbol, Participant.is_spectator).where(
+                Participant.token == token, Participant.match_id == match_id
+            )
+        )
+        row = result.first()
+        if row is None or row.is_spectator:
+            return None
+        symbol: str | None = row.symbol
+        return symbol
+
     async def release_seat(self, match_id: str, token: str) -> None:
         """Free the seat so a later token can take it."""
         participant = await self.get_participant(token)

@@ -91,6 +91,14 @@ class ConnectionManager:
     def owner(self, socket: SocketLike) -> str | None:
         return self._owners.get(socket)
 
+    def has_owner(self, participant_id: str) -> bool:
+        """Whether any live socket belongs to this participant.
+
+        Asked by the deferred seat release: a token that has reconnected already holds
+        its seat again, and releasing on behalf of the *old* socket would take it away.
+        """
+        return participant_id in self._owners.values()
+
     async def connect(self, match_id: str, socket: SocketLike, participant_id: str) -> None:
         self._connections.setdefault(match_id, []).append(socket)
         self._owners[socket] = participant_id

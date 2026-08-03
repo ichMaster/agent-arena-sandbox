@@ -94,8 +94,9 @@ SessionDep = Annotated[AsyncSession, Depends(get_session)]
 manager = ConnectionManager()
 
 #: Strong references to in-flight seat releases, so the loop cannot garbage-collect a
-#: cleanup that is still running after its connection was torn down.
-_pending_cleanups: set[asyncio.Task[None]] = set()
+#: cleanup that is still running after its connection was torn down. Keyed by token so a
+#: reconnect can wait for its own previous release instead of racing it.
+_pending_cleanups: dict[str, asyncio.Task[None]] = {}
 
 
 @app.get(f"{API_PREFIX}/health", response_model=HealthResponse)
@@ -180,10 +181,19 @@ async def match_socket(websocket: WebSocket, match_id: str, token: str = "") -> 
             return
 
         await websocket.accept()
+
+        await manager.connect(match_id, websocket, token)
+
+        # Wait for this token's own previous release before claiming. The release is
+        # deferred so that cancellation cannot kill it, which leaves it unordered with
+        # respect to a quick reconnect: land it after the claim and it wipes the seat
+        # just taken, so `joined` reports "X" and the next move is refused for having no
+        # seat. Waiting makes the ordering explicit instead of merely unlikely.
+        await _await_pending_release(token)
+
         symbol = None if issued.is_spectator else await claim_seat(session, match_id, token)
         await session.commit()
 
-        await manager.connect(match_id, websocket, token)
         await manager.send_to(
             websocket,
             event(
@@ -229,14 +239,26 @@ def _release_seat_detached(match_id: str, token: str) -> asyncio.Task[None] | No
 
     async def run() -> None:
         with contextlib.suppress(Exception):
+            # A token that is live again has already re-claimed its seat, so releasing
+            # on behalf of the socket that died would take it back off them.
+            if manager.has_owner(token):
+                return
             async with _session_factory() as session:
                 await release_seat(session, match_id, token)
                 await session.commit()
 
     task = asyncio.create_task(run())
-    _pending_cleanups.add(task)
-    task.add_done_callback(_pending_cleanups.discard)
+    _pending_cleanups[token] = task
+    task.add_done_callback(lambda done: _pending_cleanups.pop(token, None))
     return task
+
+
+async def _await_pending_release(token: str) -> None:
+    """Let this token's previous seat release finish before anything claims again."""
+    pending = _pending_cleanups.pop(token, None)
+    if pending is not None:
+        with contextlib.suppress(Exception):
+            await asyncio.gather(pending, return_exceptions=True)
 
 
 async def _serve(

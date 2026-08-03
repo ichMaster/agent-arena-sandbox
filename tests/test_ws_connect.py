@@ -213,3 +213,32 @@ def test_a_bad_frame_is_an_error_and_the_connection_survives(
         # still alive
         ws.send_text("also bad")
         assert json.loads(ws.receive_text())["event"] == "error"
+
+
+# ── code review #6: a deferred release must not clobber a reconnect ─────────
+
+
+def test_reconnecting_immediately_keeps_the_seat(client: TestClient) -> None:
+    """The seat `joined` reports must still be there for the very next move.
+
+    The release runs detached (so cancellation cannot kill it), which means it can land
+    *after* a quick reconnect has already re-claimed the seat. That produced the worst
+    kind of disagreement: `joined` said "X" and the next move was refused for having no
+    seat. The release now skips a token that already holds a live socket.
+
+    This was invisible until `submit_move` stopped assigning seats -- re-granting on
+    every move silently repaired the very seat that had been wrongly taken away.
+    """
+    match_id = _match(client)
+    token = _join(client, match_id, "A")
+
+    with client.websocket_connect(f"/ws/match/{match_id}?token={token}") as ws:
+        assert json.loads(ws.receive_text())["payload"]["symbol"] == "X"
+
+    with client.websocket_connect(f"/ws/match/{match_id}?token={token}") as ws:
+        assert json.loads(ws.receive_text())["payload"]["symbol"] == "X"
+        ws.send_text(json.dumps({"action": "submit_move", "payload": {"move": 0}}))
+        reply = json.loads(ws.receive_text())
+
+    assert reply["event"] == "state_update", reply
+    assert reply["payload"]["board"][0] == "X"
