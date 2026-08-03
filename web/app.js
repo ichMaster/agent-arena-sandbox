@@ -218,6 +218,16 @@ function renderChat(sender, message) {
   messages.scrollTop = messages.scrollHeight;
 }
 
+// Chat is disabled entirely for Observers (web_ui_specification.md §4.4, §5) —
+// the input/button ship `disabled` in the static HTML; a Player connection
+// re-enables them once `joined` reports a real seat symbol.
+function setChatEnabled(enabled) {
+  const input = document.getElementById("chat-input");
+  const send = document.getElementById("chat-send");
+  if (input) input.disabled = !enabled;
+  if (send) send.disabled = !enabled;
+}
+
 function handleChatSubmit(submitEvent) {
   submitEvent.preventDefault();
   if (!ws || ws.readyState !== WebSocket.OPEN || !isGameActive) return;
@@ -239,6 +249,7 @@ function routeEvent({ event, payload }) {
       initPlayerCards(mySymbol);
       renderBoard(payload.board, payload.current_turn, payload.valid_moves, mySymbol, isGameActive);
       updateActiveCard(payload.current_turn);
+      setChatEnabled(mySymbol !== null);
       break;
     case "state_update":
       renderBoard(payload.board, payload.current_turn, payload.valid_moves, mySymbol, isGameActive);
