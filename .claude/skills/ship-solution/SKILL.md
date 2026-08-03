@@ -182,6 +182,10 @@ Gate the hand-offs: reconcile → execute → review → release; **release only
 items are committed and the suite is green**; the **next version only after this one is released**.
 Do **not** report to chat between versions.
 
+**Validate the tracking at every version boundary** — `python3 codegen/validate_run.py
+--version vXX.YY`. A failure halts the run: a quietly broken log records every later version
+wrong too.
+
 **Every version boundary ends pushed and clean.** Before starting version N+1, verify `git status` is
 clean and there are **no unpushed commits** — `git push` if there are. The sub-skills each push their
 own work, so this is a check, not new work; it exists because this skill stops on failure, and a stop

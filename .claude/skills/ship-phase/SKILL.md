@@ -217,6 +217,14 @@ review only after execute closed the issues with a green report; **release only 
 fix-now items are committed and the suite is green**; the **next version only after this one is
 released**.
 
+**Validate the TRACKING at every version boundary, before starting the next.** Run
+`python3 codegen/validate_run.py --version vXX.YY`. It checks that the version emitted its
+start/end, that every step and every issue is recorded, that nothing is quarantined, and that
+skill-emit compliance is ≥95%. **A failure here halts the run exactly like a red suite does** —
+instrumentation fails quietly, and a log that is wrong from version one records nine more
+versions wrong before anyone notices. The generated code may be perfect while the record of it
+is broken; that is the failure this pipeline cannot afford. Fix the emit, then continue.
+
 **Every version boundary ends pushed and clean.** Before starting version N+1, verify `git status` is
 clean and the branch has **no unpushed commits** — `git push` if it does. Each sub-skill already pushes
 its own work (one issue = one commit = one push; review pushes each fix; `release-version` pushes the
