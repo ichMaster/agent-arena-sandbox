@@ -1,6 +1,22 @@
 AgentArena — Release Notes
 ===========================
 
+Version 02.01.00 (2026-08-04)
+------------------------------
+- AgentResponse{move: int, comment: str} — the structured turn reply
+  (ARENA-052).
+- LLMClient: the abstract model-vendor seam, generic over a BaseModel
+  schema, plus create_llm_client's config-driven dispatch and fail-fast
+  ANTHROPIC_API_KEY check (ARENA-053).
+- AnthropicHaikuClient: forces structured output via a single synthetic
+  tool with a pinned tool_choice; model id is a real, dated constant
+  (claude-haiku-4-5-20251001), not a placeholder (ARENA-054).
+- Code review fix: a whitespace-only API key is now treated as missing,
+  same as an empty one.
+- 112 tests passing, mypy --strict clean across games/server/agent.
+  The Anthropic SDK is mocked throughout the default suite — no
+  network call, no cost.
+
 Version 01.04.00 (2026-08-04) — v01 release gate
 ------------------------------
 - ConnectionManager: connect/disconnect/broadcast/send_to/close_room,
