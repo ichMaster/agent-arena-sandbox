@@ -1,11 +1,21 @@
-"""Stop hook — close out a run that died without saying so.
+"""Stop hook — records nothing about the run's lifecycle, deliberately.
 
-A run killed mid-flight leaves ``*.start`` with no terminator. Without this, the only
-signal is staleness, which the dashboard would have to guess from. Writing
-``run.aborted`` is the honest version (vision §8, architecture §9.2).
+It used to write ``run.aborted`` so a run killed mid-flight would not be left with
+``*.start`` and no terminator. That was wrong about when this hook fires: **Stop runs
+at the end of every assistant turn**, not when the session ends. A ``/ship-phase`` run
+spans many turns by construction, so the first turn boundary closed the run and every
+later event was appended to a log that already claimed to be finished — the dashboard
+showed *aborted* while the run was still shipping versions.
 
-This does not decide anything: the *next* orchestrator invocation still asks whether
-to resume or supersede (architecture §9.3). It only records that the run stopped.
+Worse, it destroyed the signal it meant to protect. An unfinished run is detected by
+the **absence** of a terminal event (``tracker.run.pending``), which is what the
+orchestrator's resume-or-supersede prompt keys on. Writing a terminal event on every
+turn meant a genuinely dead run looked deliberately aborted, so nothing offered to
+resume it.
+
+So a stopped session is now recognised the way it always should have been: by a run
+with no terminator and no recent events. This module keeps :func:`run_is_open` because
+that question is still worth asking — it just no longer answers it by force.
 """
 
 from __future__ import annotations
@@ -16,7 +26,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from tracker import emit, paths  # noqa: E402
+from tracker import paths  # noqa: E402
 
 EMITTER = "hook:on-stop"
 TERMINAL = {"run.end", "run.aborted"}
@@ -32,8 +42,8 @@ def run_is_open(run_id: str) -> bool:
         if not line.strip():
             continue
         # Any content at all means a run was underway. A torn line is *evidence* the
-        # run died mid-write -- exactly the case this hook exists for -- so it must
-        # count, not be skipped into "nothing ever happened".
+        # run died mid-write, so it must count, not be skipped into "nothing ever
+        # happened".
         seen = True
         try:
             event = json.loads(line)
@@ -45,15 +55,7 @@ def run_is_open(run_id: str) -> bool:
 
 
 def main() -> int:
-    try:
-        run_id = emit.current_run_id()
-        if run_id and run_is_open(run_id):
-            emit.emit(
-                "run.aborted", emitter=EMITTER, status="fail",
-                data={"reason": "session-stopped"},
-            )
-    except BaseException:  # noqa: BLE001 - a hook must never disturb its session
-        pass
+    """Do nothing. Kept registered so the reasoning above stays discoverable."""
     return 0
 
 

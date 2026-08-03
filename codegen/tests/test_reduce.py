@@ -500,3 +500,39 @@ def test_a_fix_without_counts_leaves_the_suite_size_alone() -> None:
         }
     )
     assert reduce_mod.reduce(base + [line], NOW).metrics["tests_passing"] == before
+
+
+def test_resuming_reopens_a_run_that_was_closed() -> None:
+    """A resumed run is running again -- not still finished.
+
+    Resuming exists to continue a run that stopped without closing. Leaving the
+    terminal status set would show the rest of the work happening inside a run the
+    panel still calls aborted.
+    """
+    lines = gen_log.preset("clean-run").splitlines() + [
+        json.dumps({
+            "v": 1, "ts": "2026-08-03T15:00:00.000Z", "run_id": gen_log.RUN_ID,
+            "type": "run.aborted", "emitter": "hook:on-stop",
+            "scope": {}, "status": "fail", "data": {"reason": "session-stopped"},
+        }),
+        json.dumps({
+            "v": 1, "ts": "2026-08-03T15:05:00.000Z", "run_id": gen_log.RUN_ID,
+            "type": "run.resumed", "emitter": "skill:ship-phase",
+            "scope": {}, "status": "ok", "data": {"gap_s": 300},
+        }),
+    ]
+    state = reduce_mod.reduce(lines, NOW)
+    assert state.status == "running"
+    assert state.ended is None
+
+
+def test_resuming_still_excludes_the_idle_gap() -> None:
+    """Reopening must not cost the idle accounting it also carries."""
+    lines = gen_log.preset("clean-run").splitlines() + [
+        json.dumps({
+            "v": 1, "ts": "2026-08-03T15:05:00.000Z", "run_id": gen_log.RUN_ID,
+            "type": "run.resumed", "emitter": "skill:ship-phase",
+            "scope": {}, "status": "ok", "data": {"gap_s": 600},
+        }),
+    ]
+    assert reduce_mod.reduce(lines, NOW).idle_s >= 600

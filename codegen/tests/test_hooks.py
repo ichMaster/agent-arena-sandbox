@@ -123,20 +123,43 @@ def test_summarise_bash_keeps_shape_not_content() -> None:
 # ── the Stop hook ────────────────────────────────────────────────────────────
 
 
-def test_stop_closes_an_open_run(active_run: str) -> None:
+def test_stop_does_not_close_an_open_run(active_run: str) -> None:
+    """Stop fires at the end of every assistant turn, not at session end.
+
+    A /ship-phase run spans many turns, so writing a terminal event here closed the
+    run at the first turn boundary and every later event landed in a log that already
+    claimed to be finished.
+    """
     emit.emit("run.start", emitter="skill:ship-phase", data={
         "command": "/ship-phase v01", "plan": ["v01.01"],
         "baseline": {"tests": 0, "mypy_errors": 0},
         "git": {"branch": "b", "head_sha": "s", "remote": "o"},
     })
+    before = _events(active_run)
     result = _run_hook("on_stop.py", "{}", paths.runs_root())
     assert result.returncode == 0
-    assert [e["type"] for e in _events(active_run)][-1] == "run.aborted"
-    assert _events(active_run)[-1]["data"]["reason"] == "session-stopped"
+    assert _events(active_run) == before, "the hook must not write to the run log"
+    assert on_stop.run_is_open(active_run) is True
+
+
+def test_an_unfinished_run_stays_detectable_as_unfinished(active_run: str) -> None:
+    """The signal the hook used to destroy: no terminator means "still open".
+
+    tracker.run.pending keys the resume-or-supersede prompt on exactly this, so a
+    terminal event written per turn made a dead run look deliberately aborted.
+    """
+    emit.emit("run.start", emitter="skill:ship-phase", data={
+        "command": "/ship-phase v01", "plan": ["v01.01"],
+        "baseline": {"tests": 0, "mypy_errors": 0},
+        "git": {"branch": "b", "head_sha": "s", "remote": "o"},
+    })
+    for _ in range(3):
+        _run_hook("on_stop.py", "{}", paths.runs_root())
+    assert on_stop.run_is_open(active_run) is True
 
 
 def test_stop_does_not_touch_a_finished_run(active_run: str) -> None:
-    """A spurious run.aborted would make a clean run look like a crash."""
+    """A spurious event would make a clean run look like something happened after it."""
     emit.emit("run.start", emitter="skill:ship-phase", data={
         "command": "/ship-phase v01", "plan": [],
         "baseline": {"tests": 0, "mypy_errors": 0},

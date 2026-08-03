@@ -299,6 +299,12 @@ class _Accumulator:
 
     def _on_run_resumed(self, e: Evt, s: Evt, d: Evt, ts: str) -> None:
         self.idle_s += float(d.get("gap_s", 0) or 0)
+        # Reopen the run. Resuming exists precisely to continue a run that stopped
+        # without closing, so a run that has been resumed is running again -- leaving
+        # the terminal status set would show the rest of the work happening inside a
+        # run the panel still calls finished.
+        self.status = "running"
+        self.ended = None
 
     def _on_run_end(self, e: Evt, s: Evt, d: Evt, ts: str) -> None:
         self.status = "done"
