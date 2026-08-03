@@ -1,6 +1,22 @@
 AgentArena -- Release Notes
 ===========================
 
+Version 03.01.00 (2026-08-03)
+---------------------------
+Roadmap phase v03.01 -- Static UI shell & connection.
+
+- web/ mounted at /ui with no build step, and Cache-Control: no-store on /ui/*
+  only -- without it a browser serves stale JS and an edit appears to do
+  nothing. The API keeps normal caching.
+- index.html + styles.css: header, board (nine real buttons), chat panel and
+  Host/Join/Observe controls, in a dark arena aesthetic that references nothing
+  external.
+- app.js: the lobby actions open exactly one WebSocket, a connection indicator
+  tracks it, routeEvent dispatches and ignores unknown events, and the full
+  match id is displayed -- never truncated, since it is copied into the agent CLI.
+
+Tests: 428 passing. mypy --strict clean.
+
 Version 02.03.00 (2026-08-03)
 ---------------------------
 Roadmap phase v02.03 -- Agent event loop & decision play. THE v02 GATE.
