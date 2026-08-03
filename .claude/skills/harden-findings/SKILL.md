@@ -22,7 +22,7 @@ invokes it only after its own `--harden` flag or an explicit user approval at th
 - `scope` — optional filter: a phase (`v02` → reports whose findings belong to that phase's code),
   a version (`v02.02`), or omitted → **all** `spec/implementation/*code-review*.md` reports.
 - `--release` — after fixes land, cut the `ZZ` patch release automatically (e.g. `v02.03.00` →
-  `v02.03.01`, tag `opus-v02.03.01`). Without it, finish by **recommending** `/release-version` —
+  `v02.03.01`, tag `v02.03.01`). Without it, finish by **recommending** `/release-version` —
   never bump a version without explicit confirmation.
 
 Examples: `/harden-findings` · `/harden-findings v01` · `/harden-findings v02 --release`
@@ -70,7 +70,7 @@ landing isn't possible.
 2. Commit the report updates (a `docs:` commit) and push everything.
 3. **Release:** if `--release` was passed (or the user confirms when asked), invoke `release-version`
    for the `ZZ` patch bump on the affected released version (the roadmap's "post-release fix", e.g.
-   `01.04.01`, tag `opus-v01.04.01`). Otherwise just recommend the command and stop — releasing stays
+   `01.04.01`, tag `v01.04.01`). Otherwise just recommend the command and stop — releasing stays
    explicit.
 
 ### Step 3: Report to chat
@@ -96,4 +96,4 @@ LOW findings untouched (with homes), final suite/typing status, and the patch ta
   an already-released version.
 - **Stop on failure.** A red `pytest`/`mypy` on any fix halts the sweep — report what landed and what
   remains; never paper over it.
-- **Generate every line fresh.** Never `git checkout`/`cherry-pick`/merge code from a sibling branch.
+- **Generate every line fresh.** Never `git checkout`/`cherry-pick`/merge code out of git history or any other ref.

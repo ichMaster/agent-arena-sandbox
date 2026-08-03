@@ -27,7 +27,7 @@ for each PHASE vXX (in roadmap order):
         2. upload-issues @spec/implementation/vXX.YY-issues.md
         3. execute-issues vXX.YY::phase        (implement → validate → commit → push → close)
         4. review-and-fix-issues vXX.YY        (review → ranked doc → fix-now fixes → same doc)
-        5. release-version vXX.YY.00           ← RELEASE PER VERSION (tag opus-vXX.YY.00)
+        5. release-version vXX.YY.00           ← RELEASE PER VERSION (tag vXX.YY.00)
     → END OF PHASE: HARDEN (skill: harden-findings) — OPT-IN ONLY (--harden, or ask; skipped otherwise)
     → REPORT the phase to chat
 → next phase; after the whole scope: overall summary to chat
@@ -66,7 +66,7 @@ opt-in end-of-phase hardening sweep, and releases per version; each sub-skill ke
    ordered version list (`### vXX.YY` headings under `## vXX`, in file order).
 3. Confirm we are on the working dev branch and the tree is clean; establish a **green baseline**
    (`pytest` + strict `mypy`). Never start on a red suite — fix a clear flake first or surface it.
-4. **Skip already-shipped versions** (release tag `opus-vXX.YY.00` exists). A version partially done
+4. **Skip already-shipped versions** (release tag `vXX.YY.00` exists). A version partially done
    (issues/report exist but no tag) resumes from its remaining steps — each sub-skill is idempotent
    (`generate` asks overwrite, `upload` dedupes, `execute` skips closed issues, `release` refuses a
    downgrade).
@@ -96,8 +96,8 @@ generated against the previous version's *real, fixed* implementation. Invoke ea
    **fix-now** fixes only (with regression tests, LLM mocked), results recorded **in that same doc**
    (incl. "Architecture impact" notes). Deferred findings stay deferred — they are the HARDEN sweep's
    input, at the end of the phase, if the user opts in.
-5. **`release-version vXX.YY.00`** → bump `VERSION`/`RELEASE.txt`/the app version, tag (namespaced
-   `opus-vXX.YY.00` — the shared repo holds sibling tags), and push. **Release per version.**
+5. **`release-version vXX.YY.00`** → bump `VERSION`/`RELEASE.txt`/the app version, tag `vXX.YY.00`
+   (unprefixed — this repo is standalone and nothing collides), and push. **Release per version.**
 
 Gate the hand-offs: upload only after generate wrote the file; execute only after the issues exist;
 review only after execute closed the issues with a green report; **release only after the review's
@@ -122,7 +122,7 @@ code-review reports, fixes every still-unfixed 🔴 HIGH / 🟠 MEDIUM finding (
 each with a regression test, validated green, one focused commit — updates the reports in place
 ("Fixes applied" + "Architecture impact", which the next phase's RECONCILE reads), and, because the
 phase's versions are already released, ships the result as a **`ZZ` patch release** on the phase's
-latest version (e.g. `opus-v02.03.01`). Its escape hatch (a fix that can't land safely is held with a
+latest version (e.g. `v02.03.01`). Its escape hatch (a fix that can't land safely is held with a
 reason and surfaced) applies unchanged.
 
 ### Step 3: REPORT the phase to chat
@@ -158,13 +158,12 @@ shipped, versions skipped as already-released, anything stopped early and what r
   a version whose suite isn't green.
 - **Every fix ships a regression test**, the LLM is always mocked (no paid calls), and the suite stays
   green and deterministic.
-- **Surface real decisions.** Pause for shared-repo **ID/tag collisions** (use the `opus-` prefix per
-  the established pattern), an **overwrite/append** prompt, the **HARDEN approval question**, a held
+- **Surface real decisions.** Pause for an **ID/tag collision**, an **overwrite/append** prompt, the
+  **HARDEN approval question**, a held
   finding, or any execution/validation failure. Routine plan confirmations run straight through.
 - **Delegate, never duplicate.** This skill only sequences the sub-skills (`generate-issues`,
   `upload-issues`, `execute-issues`, `review-and-fix-issues`, `harden-findings`, `release-version`)
   and adds the gating; no logic of its own. Each sub-skill keeps its discipline — one issue = one
   commit, seam changes carry `spec/architecture.md` + contract test, IDs stay in this branch's
-  `ARENA-###` namespace, releases use namespaced tags, every line generated fresh (never copied
-  from a sibling branch).
+  `ARENA-###` namespace, releases use unprefixed `vXX.YY.ZZ` tags, every line generated fresh.
 - **Ask on a bad target.** If the argument doesn't resolve to a real roadmap phase/version, ask.

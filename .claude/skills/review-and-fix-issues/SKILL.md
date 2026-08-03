@@ -133,6 +133,6 @@ adversarial pass (`/code-review ultra`) for confirmation.
   note in the review doc — so the next `/generate-issues` can reconcile the following version against
   what was really built, not the stale design.
 - **Never release.** No version bump, no tag — recommend `/release-version` and stop.
-- **Generate every line fresh.** Never `git checkout`/`cherry-pick`/merge code from a sibling branch.
+- **Generate every line fresh.** Never `git checkout`/`cherry-pick`/merge code out of git history or any other ref.
 - **Ask on genuine ambiguity** — an unclear scope, or a borderline finding where fix-now vs defer is a
   real judgment call the user should make.

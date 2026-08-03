@@ -26,15 +26,15 @@ close.
 - `--dry-run` → print the execution plan without making changes
 
 > [!IMPORTANT]
-> **Generate every line fresh.** A complete implementation of this same spec exists on sibling
-> branches — you must **NEVER** `git checkout`/`cherry-pick`/merge code from another branch to satisfy
-> an issue. This is an independent build.
+> **Generate every line fresh.** A complete earlier build of this same spec exists in this repo's git
+> history (on `main`, tagged `v05.03.00`) — you must **NEVER** `git checkout`/`cherry-pick`/merge code
+> from history or any other ref to satisfy an issue. The generated run is the point.
 
 ## Instructions
 
 ### Step 0: Verify prerequisites & read the file
 
-1. Confirm we are on the working dev branch (not a sibling) and the tree is clean (`git status`).
+1. Confirm we are on the working dev branch and the tree is clean (`git status`).
 2. Resolve the target to `spec/implementation/vXX.YY-issues.md` and **read it** — the Issues Summary
    Table (IDs, titles, size, area, dependencies), the Dependency Tree, and each detailed
    `### ARENA-### …` section. **No `gh` is used.**
@@ -75,7 +75,7 @@ For each issue:
 
    {1-2 sentence summary of what was implemented}
 
-   Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+   Co-Authored-By: <the running model's trailer> <noreply@anthropic.com>
    EOF
    )"
    ```
@@ -105,7 +105,7 @@ validation checklist, and next steps. Commit + push it (an `ARENA`/`docs` messag
 
 - **File-driven, no GitHub.** The issue list, details, and dependency order come from the local
   `*-issues.md` file. Never `gh issue list`/`create`/`close`. No `vXX.YY-github-report.md` is written.
-- **Generate every line fresh** — never copy code from a sibling branch.
+- **Generate every line fresh** — never recover code from git history or another ref.
 - **One issue = one commit.** Never mix work across IDs; never work on two issues at once.
 - **Dependency order.** Never start an issue whose file-listed dependencies aren't committed.
 - **No broken code.** Only commit what passes `pytest` + strict `mypy`.

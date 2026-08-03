@@ -55,11 +55,11 @@ per-version execution time**, and writes the final report.
    has a `spec/implementation/vXX.YY-issues.md`. Group versions under their phase, in order.
 3. Confirm the working dev branch + a clean tree; establish a **green baseline** (`pytest` + strict
    `mypy`) and **record the baseline test count** (the "before" for statistics). Never start red.
-4. **Skip already-shipped versions** (release tag `opus-vXX.YY.00` exists); resume a partial version
+4. **Skip already-shipped versions** (release tag `vXX.YY.00` exists); resume a partial version
    from its remaining steps (sub-skills are idempotent).
 5. **Start the run clock:** capture `RUN_START=$(date +%s)`. Keep a **running stats table** as you go
-   (append each version's row as it finishes — e.g. to a scratch file in the repo — so a long run never
-   loses a measurement).
+   (append each version's row as it finishes to **`.ship-solution-progress.md`** in the repo root — it
+   is gitignored — so a long run never loses a measurement).
 6. **Confirm the plan once**, then run — don't re-confirm each sub-step; pause only for the blockers in
    the rules.
 
@@ -78,7 +78,7 @@ reconcile against N's real, fixed, released code). Invoke each sub-skill via the
    write `vXX.YY-execution-report.md`. **No GitHub.**
 3. **`review-and-fix-issues vXX.YY`** — the ranked review doc + **fix-now** fixes only (with regression
    tests), recorded in that doc.
-4. **`release-version vXX.YY.00`** — bump + tag `opus-vXX.YY.00` + push.
+4. **`release-version vXX.YY.00`** — bump + tag `vXX.YY.00` + push.
 - **Stamp `V_END=$(date +%s)`** (after release). **Record the version's row:** duration
   `V_END − V_START`, plus the stats collected below.
 
@@ -116,7 +116,7 @@ chat. Structure:
 ## Total
 - Wall-clock: <Hh Mm Ss>  (RUN_END − RUN_START)
 - Phases: <n> · Versions: <m> · Issues executed: <k> · Commits: <c>
-- Releases: <all opus-vXX.YY.ZZ tags>
+- Releases: <all vXX.YY.ZZ tags>
 - Findings: fix-now fixed <a> · hardened HIGH/MEDIUM <b> · LOW deferred <c> · held <d>
 - Reconcile: issues corrected <x> · moot <y> · untouched <z>
 - Suite: <baseline> → <final> tests passing · mypy --strict clean · zero paid calls
@@ -129,7 +129,7 @@ chat. Structure:
 ## By version
 | Version | Duration | Issues | Commits | Tests (before→after) | Reconcile (corr/moot/kept) | Review (fix-now/deferred) | Release tag |
 |---------|----------|--------|---------|----------------------|----------------------------|---------------------------|-------------|
-| v0X.YY  | mm:ss    | …      | …       | … → …                | …                          | …                         | opus-v0X.YY.00 |
+| v0X.YY  | mm:ss    | …      | …       | … → …                | …                          | …                         | v0X.YY.00 |
 
 ## Timings
 - Fastest / slowest version (with durations); average per version; per-phase totals.
@@ -162,6 +162,6 @@ phases/total. Every number must trace to the run (execution reports, review docs
   and deterministic.
 - **Delegate, never duplicate.** This skill sequences the sub-skills, gates, times, and reports — no
   other logic. Each sub-skill keeps its discipline (one issue = one commit, seam changes carry
-  `spec/architecture.md` + contract test, `opus-` tags, every line generated fresh).
+  `spec/architecture.md` + contract test, unprefixed `vXX.YY.ZZ` tags, every line generated fresh).
 - **Surface real decisions** — a tag collision, a held HARDEN finding, an ambiguous reconcile, or any
   execution/validation failure.

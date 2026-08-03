@@ -165,13 +165,20 @@ land and its tests are green — **never bump the version without explicit user 
   hosts them.
 - **The `.agents/` skillset** (a simpler, separate `generate-issues`/`upload-issues`/`execute-issues`
   set) has been deleted. Use `.claude/skills/*`.
-- The `opus-` tag prefix is **legacy** from the bake-off — 12 references across `.claude/skills/*`. It
-  no longer prevents any collision. Changing it is a deliberate, repo-wide decision.
-- **Known drift inside the skills**, worth fixing before or during any instrumentation work:
-  - **Tag prefix disagrees.** `ship-phase` says to tag `opus-vXX.YY.00`, but `release-version`
-    hardcodes `git tag -a v<version>` with no prefix parameter. The repo's inherited `opus-opus-*`
-    and `opus-sonnet-*` tags suggest this mismatch has misfired before.
-  - **`execute-issues` still warns against copying from sibling branches** (lines 25–28), naming
-    branches on a remote this repo no longer has.
-  - **`execute-issues` validates with `mypy --config-file mypy.ini`**, but strict mode is configured
-    in `pyproject.toml` and no `mypy.ini` is generated.
+- **The `opus-` tag prefix.** Release tags are plain `vXX.YY.ZZ` — this repo is standalone and nothing
+  collides. Do not reintroduce a prefix.
+
+## Conventions the skills now depend on
+
+Fixed in the skills; breaking any of these silently degrades a run rather than failing it.
+
+- **Type gate:** `mypy games server agent`, strict via `[tool.mypy] strict = true` in
+  `pyproject.toml`. **Never** `--config-file mypy.ini` — no such file is generated and mypy treats a
+  missing config as a hard error, type-checking nothing.
+- **Release staging:** stage only files that exist (`if [ -e "$f" ]; then git add "$f"; fi`). Early
+  releases run before `server/main.py` and `README.md` exist, and `git add` is fatal on a pathspec
+  matching nothing.
+- **Tag push:** push the new tag by name (`git push origin "v<version>"`). **Never** `--tags` or
+  `--follow-tags` — this repo's inherited tags are reachable from `main`, so either flag would publish
+  another build's release history.
+- **Commit trailers** name the running model; they are not hardcoded to a specific one.

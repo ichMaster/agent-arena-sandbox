@@ -21,17 +21,16 @@ The `<label>` is the GitHub phase label exactly as it appears (e.g., `v01.02::ph
 - `/execute-issues v01.02::phase --dry-run` -- show execution plan without making changes
 
 > [!IMPORTANT]
-> **Generate every line fresh.** Every line of code, test, script, and config must be
-> written by the executing agent in-session. A **complete implementation of this same
-> spec exists on sibling branches** (`Anthropic-Gemini3.1Pro-Sonet5-dev`, `Gemini-3.1Pro-*`).
-> You must **NEVER** `git checkout`, `git cherry-pick`, or merge/copy code from another
-> branch to satisfy an issue. This is an independent build.
+> **Generate every line fresh.** Every line of code, test, script, and config must be written by the
+> executing agent in-session. A complete earlier build of this same spec exists in this repo's git
+> history (on `main`, tagged `v05.03.00`). Never `git checkout`, `git cherry-pick`, or otherwise
+> recover code from history or any other ref to satisfy an issue — the generated run is the point.
 
 ## Instructions
 
 ### Step 0: Verify prerequisites
 
-1. Confirm we are on the expected branch (the current working dev branch, not a sibling)
+1. Confirm we are on the expected branch (the current working dev branch)
 2. Confirm working tree is clean (`git status`)
 3. Confirm `gh` is authenticated
 4. Parse the label to determine the phase: label `v01.02::phase` -> phase `v01.02`
@@ -49,7 +48,8 @@ From the GitHub issue list, build an ordered queue based on dependencies:
 - Parse ARENA-### IDs from issue titles (format: `ARENA-###: {title}`)
 - Determine dependency order from the phase issues file dependency tree
 - Issues with no unmet dependencies go first
-- Skip issues already closed on GitHub
+- Closed issues are already excluded (Step 0 fetches `--state open`), so a re-run resumes where the
+  last one stopped
 - If `--issue ARENA-###` is specified, execute only that issue (but verify its dependencies are closed)
 
 Show the user the execution plan and ask for confirmation.
@@ -83,7 +83,11 @@ architecture in `spec/architecture.md`. Route by component ([architecture.md](..
 Run validation checks (Python):
 
 1. **Tests:** `pytest` for the changed packages (unit + the contract tests pinning the seams), where tests exist.
-2. **Types:** `mypy games/ server/ agent/ --config-file mypy.ini` (strict on `games/*`; fix any error you introduce).
+2. **Types:** `mypy games server agent` — strict mode comes from `[tool.mypy] strict = true` in
+   `pyproject.toml`. **Do not pass `--config-file mypy.ini`:** no `mypy.ini` is generated, and mypy
+   treats a missing config as a hard error (`mypy: error: Cannot find config file 'mypy.ini'`) and
+   type-checks nothing — so the gate silently stops being a gate. Pass only the packages that exist
+   yet. Fix any error you introduce.
 3. **Syntax/import:** `python3 -m py_compile {changed_py_files}` and an import check for changed modules.
 4. **Contract consistency:** the touched seams match `spec/architecture.md` and their contract tests.
 5. **Acceptance criteria:** go through each criterion from the issue and verify against the phase DoD/Tests in `spec/roadmap.md`.
@@ -102,7 +106,7 @@ ARENA-###: {title}
 
 Closes #{github-issue-number}
 
-Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+Co-Authored-By: <the running model's trailer> <noreply@anthropic.com>
 EOF
 )"
 ```
@@ -202,7 +206,7 @@ Commit and push the report (`ARENA`-style message, with the Co-Authored-By trail
 
 ## Important Rules
 
-- **Generate every line fresh.** Never `git checkout`/`cherry-pick`/merge code from a sibling branch to satisfy an issue — every line is written in-session.
+- **Generate every line fresh.** Never `git checkout`/`cherry-pick`/merge code out of git history or any other ref to satisfy an issue — every line is written in-session.
 - **One issue at a time.** Never work on multiple issues simultaneously.
 - **Dependency order.** Never start an issue whose dependencies are not closed.
 - **Clean commits.** Each issue = one commit. No mixing work across issues.

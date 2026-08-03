@@ -69,16 +69,27 @@ If no changelog items were given as arguments:
 
 ### Step 4: Commit
 
-Stage only the version-related files:
+Stage only the version-related files — and only the ones that **exist**. Early releases run before
+`server/main.py` or `README.md` are generated, and `git add` is **fatal** on a pathspec that matches
+nothing (`fatal: pathspec '…' did not match any files`, exit 128), which would abort the release with
+the version files already rewritten:
 
 ```bash
-git add VERSION README.md RELEASE.txt server/main.py
+for f in VERSION README.md RELEASE.txt server/main.py; do
+  if [ -e "$f" ]; then git add "$f"; fi
+done
+```
+
+(Use the `if` form, not `[ -e "$f" ] && git add "$f"` — the latter leaves the loop's exit status at 1
+whenever the *last* file is absent, which is exactly the common case here.)
+
+```bash
 git commit -m "$(cat <<'EOF'
 Release v<version>
 
 <1-2 sentence summary of what this release includes>
 
-Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+Co-Authored-By: <the running model's trailer> <noreply@anthropic.com>
 EOF
 )"
 ```
@@ -91,9 +102,17 @@ git tag -a v<version> -m "<one-line summary of the release>"
 
 ### Step 6: Push
 
+Push the branch, then **only the tag just created** — never `--tags` or `--follow-tags`:
+
 ```bash
-git push && git push --tags
+git push
+git push origin "v<version>"
 ```
+
+> `git push --tags` pushes *every* local tag, and `--follow-tags` pushes every annotated tag reachable
+> from the pushed commits. This repo carries tags inherited from an earlier multi-build repo, all
+> reachable from `main`'s history — either flag would publish another build's entire release history
+> alongside this release. Push the one tag by name.
 
 ### Step 7: Report
 
