@@ -284,12 +284,12 @@ filesystem, no env.
 **Dependencies:** TRK-002
 
 **Acceptance criteria:**
-- [ ] `reduce` contains no call to `datetime.now`, `time.time`, `os.environ`, or any file open —
+- [x] `reduce` contains no call to `datetime.now`, `time.time`, `os.environ`, or any file open —
       asserted by an AST test over the module.
-- [ ] Reducing the same fixture twice yields byte-identical JSON.
-- [ ] Open nodes get elapsed from the injected `now`; passing a different `now` changes only elapsed.
-- [ ] `first_pass_rate` counts issues whose max `attempt` is 1, over issues with an `issue.end{ok}`.
-- [ ] `github.commits` counts `issue.commit` + `finding.fixed` + `harden.finding.fixed` + release
+- [x] Reducing the same fixture twice yields byte-identical JSON.
+- [x] Open nodes get elapsed from the injected `now`; passing a different `now` changes only elapsed.
+- [x] `first_pass_rate` counts issues whose max `attempt` is 1, over issues with an `issue.end{ok}`.
+- [x] `github.commits` counts `issue.commit` + `finding.fixed` + `harden.finding.fixed` + release
       commits, not just issue commits.
 
 ---
@@ -310,12 +310,12 @@ filesystem, no env.
 **Dependencies:** TRK-006
 
 **Acceptance criteria:**
-- [ ] With zero completed versions, `eta is None` and `scope.known == 0`.
-- [ ] With one completed version, `eta.low_s < eta.high_s` and `basis.issues_sampled` matches the
+- [x] With zero completed versions, `eta is None` and `scope.known == 0`.
+- [x] With one completed version, `eta.low_s < eta.high_s` and `basis.issues_sampled` matches the
       count of `issue.end{ok}`.
-- [ ] `scope.est_high - scope.est_low` **decreases monotonically** as `version.decomposed` events are
+- [x] `scope.est_high - scope.est_low` **decreases monotonically** as `version.decomposed` events are
       appended, reaching 0 when none remain.
-- [ ] No key named `issues_planned` appears anywhere in the output (asserted).
+- [x] No key named `issues_planned` appears anywhere in the output (asserted).
 
 ---
 
@@ -339,12 +339,12 @@ with real commits, tags and GitHub issues is not an iteration loop.
 **Dependencies:** TRK-002
 
 **Acceptance criteria:**
-- [ ] Same scenario + seed → byte-identical log across runs.
-- [ ] Every generated log validates against `schema.json`, including the deliberately malformed
+- [x] Same scenario + seed → byte-identical log across runs.
+- [x] Every generated log validates against `schema.json`, including the deliberately malformed
       scenarios (which must be malformed **in the intended way**, not accidentally).
-- [ ] All seven §10.2 fixtures are generated from presets, not hand-written.
-- [ ] `replay.py --speed 10` drives a visible live update in the dashboard.
-- [ ] Generator and replay are **test-only** — nothing in `tracker/`, `hooks/` or `dashboard/` imports
+- [x] All seven §10.2 fixtures are generated from presets, not hand-written.
+- [x] `replay.py --speed 10` drives a visible live update in the dashboard.
+- [x] Generator and replay are **test-only** — nothing in `tracker/`, `hooks/` or `dashboard/` imports
       them.
 
 ---
@@ -362,13 +362,13 @@ with a sibling `<name>.expected.json`: `clean-run`, `retry-run`, `aborted-run`, 
 **Dependencies:** TRK-006, TRK-024
 
 **Acceptance criteria:**
-- [ ] Each fixture reduces to its expected state exactly.
-- [ ] `torn-tail` → `counts.torn == 1`, all preceding events still reduced.
-- [ ] `malformed` → bad line and unknown type both quarantined with correct line numbers; the rest of
+- [x] Each fixture reduces to its expected state exactly.
+- [x] `torn-tail` → `counts.torn == 1`, all preceding events still reduced.
+- [x] `malformed` → bad line and unknown type both quarantined with correct line numbers; the rest of
       the file still reduces.
-- [ ] `no-review` → the un-reviewed version is **absent** from findings output, not present with zero.
+- [x] `no-review` → the un-reviewed version is **absent** from findings output, not present with zero.
       *(This pins the prototype's bug: "clean" and "nobody looked" are different claims.)*
-- [ ] `aborted-run` → status `aborted`, unmatched `*.start` reported, no exception.
+- [x] `aborted-run` → status `aborted`, unmatched `*.start` reported, no exception.
 
 ---
 
@@ -385,9 +385,9 @@ with a sibling `<name>.expected.json`: `clean-run`, `retry-run`, `aborted-run`, 
 **Dependencies:** TRK-006
 
 **Acceptance criteria:**
-- [ ] Deleting `state.json` and rebuilding reproduces it byte-for-byte.
-- [ ] A reader looping on `state.json` during 1000 rapid writes never reads invalid JSON.
-- [ ] Rebuild of a 10 000-event log completes in < 2 s.
+- [x] Deleting `state.json` and rebuilding reproduces it byte-for-byte.
+- [x] A reader looping on `state.json` during 1000 rapid writes never reads invalid JSON.
+- [x] Rebuild of a 10 000-event log completes in < 2 s.
 
 ---
 
@@ -409,11 +409,11 @@ produces a real timeline.
 **Dependencies:** TRK-005
 
 **Acceptance criteria:**
-- [ ] `ship-phase/SKILL.md` grows by ≤ 15 lines total.
-- [ ] A single-version `/ship-phase v01.01` smoke check produces a log whose `*.start`/`*.end` pairs
+- [x] `ship-phase/SKILL.md` grows by ≤ 15 lines total.
+- [x] A single-version `/ship-phase v01.01` smoke check produces a log whose `*.start`/`*.end` pairs
       balance. Cheap early catch; the full validation workload is `/ship-phase v03` (see that section).
-- [ ] The emitted plan matches the Step 0 confirmed plan, including dependency-filled versions.
-- [ ] `--no-harden` produces `harden.skipped`, not a missing event.
+- [x] The emitted plan matches the Step 0 confirmed plan, including dependency-filled versions.
+- [x] `--no-harden` produces `harden.skipped`, not a missing event.
 
 ---
 
