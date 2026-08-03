@@ -1,14 +1,14 @@
 ---
 name: ship-phase
-description: Full delivery pipeline over the roadmap. Takes one selector or a comma-separated LIST of phases/versions/ranges (e.g. v01,v03.02,v04-v05). The list names TARGETS - missing prerequisite versions are added automatically, the set is de-duplicated, sorted into roadmap dependency order, and already-released versions are skipped. For each phase (vXX) run its versions (vXX.YY) in order - RECONCILE with the real implementation, generate-issues, upload-issues, execute-issues, review-and-fix-issues, release-version vXX.YY.00 (release per VERSION). At the END of the phase, an OPT-IN HARDEN sweep (--harden flag or explicit user approval) fixes the deferred HIGH/MEDIUM findings, then the phase is reported to chat. Gated; stops on failure; surfaces real decisions.
+description: Full delivery pipeline over the roadmap. Takes one selector or a comma-separated LIST of phases/versions/ranges (e.g. v01,v03.02,v04-v05). The list names TARGETS - missing prerequisite versions are added automatically, the set is de-duplicated, sorted into roadmap dependency order, and already-released versions are skipped. For each phase (vXX) run its versions (vXX.YY) in order - RECONCILE with the real implementation, generate-issues, upload-issues, execute-issues, review-and-fix-issues, release-version vXX.YY.00 (release per VERSION). At the END of every phase a HARDEN sweep runs BY DEFAULT (opt out with --no-harden) fixing the deferred HIGH/MEDIUM findings, then the phase is reported to chat. Gated; stops on failure; surfaces real decisions.
 ---
 
 # Skill: Ship Phase — the full delivery pipeline
 
 Drive the entire SDLC loop over the roadmap: **phases contain versions; each version is released;
 the next version is generated only after the previous one is implemented and fixed** — reconciled
-against the real (post-fix) implementation. Hardening of deferred findings is an **opt-in,
-end-of-phase** step, never automatic.
+against the real (post-fix) implementation. Hardening of deferred findings runs **by default at every
+phase boundary** — pass `--no-harden` to skip it.
 
 > **Terminology (per [game_specification.md](../../../spec/game_specification.md) §6):** a **phase**
 > is a top-level roadmap block `vXX` (Phase 1 → `v01` … Phase 5 → `v05`); a **version** is a `vXX.YY`
@@ -31,42 +31,43 @@ for each PHASE vXX in PLAN (in roadmap order):
         3. execute-issues vXX.YY::phase        (implement → validate → commit → push → close)
         4. review-and-fix-issues vXX.YY        (review → ranked doc → fix-now fixes → same doc)
         5. release-version vXX.YY.00           ← RELEASE PER VERSION (tag vXX.YY.00)
-    → END OF PHASE: HARDEN (skill: harden-findings) — OPT-IN ONLY (--harden, or ask; skipped otherwise)
+    → END OF PHASE: HARDEN (skill: harden-findings) — BY DEFAULT (skipped only with --no-harden)
     → REPORT the phase to chat
 → next phase; after the whole scope: overall summary to chat
 ```
 
 This skill is a **thin orchestrator** — it sequences the sub-skills, adds the reconcile gate and the
-opt-in end-of-phase hardening sweep, and releases per version; each sub-skill keeps its discipline.
+end-of-phase hardening sweep, and releases per version; each sub-skill keeps its discipline.
 
 > **This pipeline releases.** Invoking `/ship-phase` is the explicit opt-in to the automated
-> per-version releases (real tags + pushes). `release-version`'s own rules still hold — it never
-> downgrades and confirms the changelog. To build without releasing, use the individual skills.
+> per-version releases (real tags + pushes) **and** the per-phase HARDEN sweep. `release-version`'s own
+> rules still hold — it never downgrades and confirms the changelog. To build without releasing, use
+> the individual skills.
 
 ## Usage
 
 ```
-/ship-phase <selector>[,<selector>…] [--harden]
+/ship-phase <selector>[,<selector>…] [--no-harden]
 ```
 
 A **selector** is a phase (`vXX`), a version (`vXX.YY`), or a range (`vXX-vYY`). Pass **one or a
 comma-separated list of any mix** — the whole list is expanded into a single ordered plan.
 
 - `/ship-phase v02` — ship **phase v02**: every version in it (v02.01 → v02.02 → v02.03), each through
-  its five steps incl. its own release; at the phase's end **ask** whether to run the HARDEN sweep;
-  then the phase report to chat.
-- `/ship-phase v02 --harden` — same, but the end-of-phase HARDEN sweep is **pre-approved** by the
-  flag (no prompt).
-- `/ship-phase v02.02` — ship the single **version v02.02** (steps 0–5, incl. its release). No HARDEN
-  unless `--harden` is passed or the user approves when asked at the end.
-- `/ship-phase v02-v03` — ship phase v02, then phase v03 (HARDEN asked/applied per phase), then an
+  its five steps incl. its own release; at the phase's end the HARDEN sweep runs; then the phase
+  report to chat.
+- `/ship-phase v02 --no-harden` — same, but the end-of-phase HARDEN sweep is **skipped**; the deferred
+  HIGH/MEDIUM findings stay in their documented homes.
+- `/ship-phase v02.02` — ship the single **version v02.02** (steps 0–5, incl. its release), then
+  HARDEN v02 at the phase boundary.
+- `/ship-phase v02-v03` — ship phase v02, then phase v03 (each hardened at its boundary), then an
   overall summary.
 - `/ship-phase v01,v03,v05` — a **list of phases**, shipped in roadmap order.
 - `/ship-phase v01.01,v01.03,v02` — a **mixed list**: two individual versions plus a whole phase.
-- `/ship-phase v01-v02,v04.01 --harden` — a range plus a single version, hardening pre-approved.
+- `/ship-phase v01-v02,v04.01 --no-harden` — a range plus a single version, with no hardening sweeps.
 
-Whitespace around commas is ignored, so `v01, v03` works. `--harden` applies to **every** phase in the
-plan; there is no per-phase form.
+Whitespace around commas is ignored, so `v01, v03` works. `--no-harden` applies to **every** phase in
+the plan; there is no per-phase form.
 
 > **The list is a target, not the whole plan.** Missing prerequisites are **added automatically** — the
 > roadmap is cumulative, so `/ship-phase v03` plans v01 and v02 as well, and `/ship-phase v01,v03` fills
@@ -80,7 +81,7 @@ plan; there is no per-phase form.
 
 1. **Parse the selector list.** Split the argument on commas and trim whitespace. Each element is a
    **phase** (`vXX`), a **version** (`vXX.YY`), or a **range** (`vXX-vYY`); a single element is just a
-   list of one. Record whether `--harden` was passed (it applies to the whole plan).
+   list of one. Record whether `--no-harden` was passed (it applies to the whole plan).
 2. **Expand to a version set.** Read [spec/roadmap.md](../../../spec/roadmap.md) and resolve every
    selector down to individual versions (`### vXX.YY` headings under `## vXX`, in file order):
    a phase → all its versions; a range → all versions of all phases it spans; a version → itself.
@@ -118,7 +119,7 @@ plan; there is no per-phase form.
    dependency fill, any reordering, and already-shipped skips called out. Then run: do not re-confirm
    before each sub-step; pause only for the genuine blockers in the rules below.
 
-**Worked example** — `/ship-phase v03.02,v01 --harden`, on a repo where v01 is already released:
+**Worked example** — `/ship-phase v03.02,v01`, on a repo where v01 is already released:
 
 ```
 selectors : v03.02 · v01
@@ -129,8 +130,8 @@ ordered   : v01.01 → v01.02 → v01.03 → v01.04 → v02.01 → v02.02 → v0
 shipped?  : v01.01–v01.04 tagged already → skipped
 
 PLAN (5 versions to run)
-  v02  v02.01, v02.02, v02.03    → HARDEN (pre-approved) → report
-  v03  v03.01, v03.02            → HARDEN (pre-approved) → report
+  v02  v02.01, v02.02, v02.03    → HARDEN → report
+  v03  v03.01, v03.02            → HARDEN → report
 
 ℹ filled in v02.01–v02.03 and v03.01: v03.02 cannot build without them.
 ℹ reordered: v03.02 was listed first, ships last — roadmap order is required.
@@ -172,20 +173,22 @@ review only after execute closed the issues with a green report; **release only 
 fix-now items are committed and the suite is green**; the **next version only after this one is
 released**.
 
-### Step 2: END OF PHASE — HARDEN (opt-in only)
+### Step 2: END OF PHASE — HARDEN (default; `--no-harden` to skip)
 
-When the phase's last version is released, the deferred 🔴 HIGH / 🟠 MEDIUM findings accumulated in the
-run's code-review reports *may* be swept — **but only with explicit user consent**:
+When the phase's last version is released, sweep the deferred 🔴 HIGH / 🟠 MEDIUM findings accumulated
+in the run's code-review reports. **This runs by default** — invoking `/ship-phase` is the consent,
+exactly as it is for the automated per-version releases the same command performs.
 
-- **`--harden` was passed** → the sweep is pre-approved; run it.
-- **No flag** → **ask the user now** (one clear question at the phase boundary, listing the
-  outstanding HIGH/MEDIUM findings and their sources): run the hardening sweep for this phase, or
-  skip? **If declined — or no approval is available — skip the sweep entirely.**
-- **Never run HARDEN un-asked.** Skipped findings simply remain deferred to their documented homes
-  (e.g. v05.01) and are listed in the phase report.
+- **No flag** → run the sweep. Do not ask; the plan confirmed at Step 0 already included it.
+- **`--no-harden` was passed** → skip it entirely. The deferred HIGH/MEDIUM findings stay in their
+  documented homes (e.g. v05.01) and are listed as still-outstanding in the phase report.
 
-**When approved, delegate the sweep to the dedicated skill:** invoke **`harden-findings vXX
---release`** via the Skill tool and follow its instructions fully. That skill collects the run's
+> Leaving hardening on by default means a phase does not close with known HIGH-severity findings
+> sitting unfixed in its own review docs. The escape hatch inside `harden-findings` — a fix that can't
+> land cleanly is held with a reason rather than forced — is what keeps that safe.
+
+**Delegate the sweep to the dedicated skill:** invoke **`harden-findings vXX --release`** via the
+Skill tool and follow its instructions fully. That skill collects the run's
 code-review reports, fixes every still-unfixed 🔴 HIGH / 🟠 MEDIUM finding (🟡 LOW stays deferred) —
 each with a regression test, validated green, one focused commit — updates the reports in place
 ("Fixes applied" + "Architecture impact", which the next phase's RECONCILE reads), and, because the
@@ -195,12 +198,13 @@ reason and surfaced) applies unchanged.
 
 ### Step 3: REPORT the phase to chat
 
-After the phase (and its HARDEN sweep, if approved), **report the phase to chat** (not a file):
+After the phase (and its HARDEN sweep, unless `--no-harden`), **report the phase to chat** (not a file):
 - **Per version:** ARENA id range → GitHub #s, execution commit range + test/typing status, review
   finding counts (**fixed-now / deferred**, with homes), any **Architecture impact** deltas, and the
   release tag.
-- **HARDEN outcome:** ran (which findings were fixed, the patch tag) / declined / not offered — plus
-  the still-outstanding HIGH/MEDIUM findings and their homes if skipped.
+- **HARDEN outcome:** which findings were fixed and the patch tag — or, with `--no-harden`, that the
+  sweep was skipped, plus the still-outstanding HIGH/MEDIUM findings and their homes. Findings **held**
+  by the escape hatch are listed either way, with the reason.
 - **Phase rollup:** what the phase delivered against its roadmap goal.
 
 Then continue to the next phase. After the whole scope, add a short **overall summary** (phases
@@ -210,10 +214,11 @@ shipped, versions skipped as already-released, anything stopped early and what r
 
 - **Release per VERSION (`vXX.YY.00`)** — after that version is built, reviewed, and its fix-now items
   fixed. Never batch several versions into one release; never release mid-version.
-- **HARDEN is end-of-phase and OPT-IN only.** It runs solely when `--harden` was passed or the user
-  explicitly approves at the phase boundary. Never run it unrequested; when skipped, the deferred
-  HIGH/MEDIUM findings stay in their documented homes and are surfaced in the phase report. When it
-  does run and lands fixes, ship them as a `ZZ` patch release on the phase's latest version.
+- **HARDEN is end-of-phase and runs BY DEFAULT.** Invoking `/ship-phase` is the consent. It is skipped
+  only when `--no-harden` was passed — then the deferred HIGH/MEDIUM findings stay in their documented
+  homes and are surfaced as outstanding in the phase report. When it runs and lands fixes, ship them as
+  a `ZZ` patch release on the phase's latest version. A fix that can't land cleanly is **held** by
+  `harden-findings`' escape hatch, not forced.
 - **Next version only after the previous is released.** The strict sequencing is what makes the
   RECONCILE step meaningful: version N+1's issues are generated against version N's real, fixed code.
 - **Reconciliation is step 0 of every version** (via `generate-issues` Step 0.5): real code + execution
@@ -226,9 +231,9 @@ shipped, versions skipped as already-released, anything stopped early and what r
   a version whose suite isn't green.
 - **Every fix ships a regression test**, the LLM is always mocked (no paid calls), and the suite stays
   green and deterministic.
-- **Surface real decisions.** Pause for an **ID/tag collision**, an **overwrite/append** prompt, the
-  **HARDEN approval question**, a held
-  finding, or any execution/validation failure. Routine plan confirmations run straight through.
+- **Surface real decisions.** Pause for an **ID/tag collision**, an **overwrite/append** prompt, a
+  **held** HARDEN finding, or any execution/validation failure. Routine plan confirmations run straight
+  through — and the HARDEN sweep is no longer one of them, since the Step 0 plan already covered it.
 - **Delegate, never duplicate.** This skill only sequences the sub-skills (`generate-issues`,
   `upload-issues`, `execute-issues`, `review-and-fix-issues`, `harden-findings`, `release-version`)
   and adds the gating; no logic of its own. Each sub-skill keeps its discipline — one issue = one

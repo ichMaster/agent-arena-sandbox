@@ -119,7 +119,7 @@ through the tree, so any event can be attributed without parsing what came befor
 | Step | `step.start` · `step.end` · `gate.blocked` |
 | Issue | `issue.start` · `issue.implement.end` · `issue.validate.end` · `issue.commit` · `issue.failed` · `issue.reverted` · `issue.end` |
 | Review | `finding.raised` · `finding.classified` · `finding.fixed` · `finding.deferred` |
-| Harden | `harden.offered` · `harden.declined` · `harden.finding.fixed` · `harden.finding.held` |
+| Harden | `harden.start` · `harden.skipped` (`--no-harden`) · `harden.finding.fixed` · `harden.finding.held` |
 | Release | `release.tagged` · `release.pushed` |
 
 `gate.blocked` deserves emphasis: `ship-phase`'s gates are its whole contribution as an orchestrator,

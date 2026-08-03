@@ -1,6 +1,6 @@
 ---
 name: harden-findings
-description: Sweep the code-review reports in spec/implementation/ for still-unfixed HIGH/MEDIUM findings, fix each with a regression test, update the reports in place, and (opt-in) ship the result as a ZZ patch release. Runs standalone, or invoked by /ship-phase after user approval.
+description: Sweep the code-review reports in spec/implementation/ for still-unfixed HIGH/MEDIUM findings, fix each with a regression test, update the reports in place, and (opt-in) ship the result as a ZZ patch release. Runs standalone, or invoked automatically at each phase boundary by /ship-phase and /ship-solution.
 ---
 
 # Skill: Harden Findings
@@ -10,8 +10,9 @@ immediate fix"): sweep the review reports, fix every remaining **🔴 HIGH / �
 regression test, record the results in the same reports, and optionally cut a `ZZ` patch release so
 the hardening actually ships.
 
-Invoking this skill **is** the user's consent to harden — it never runs implicitly. (`/ship-phase`
-invokes it only after its own `--harden` flag or an explicit user approval at the phase boundary.)
+Consent is carried by the **invocation of whatever ran this skill**. Called directly, invoking it is
+the consent. Called from an orchestrator, the orchestrator's own invocation is: both `/ship-phase` and
+`/ship-solution` sweep at every phase boundary by default, and `/ship-phase --no-harden` is the opt-out.
 
 ## Usage
 
@@ -82,8 +83,10 @@ LOW findings untouched (with homes), final suite/typing status, and the patch ta
 ## Important Rules
 
 - **Only HIGH and MEDIUM.** LOW findings are out of scope — they stay deferred to their documented homes.
-- **Invocation = consent.** This skill never runs implicitly; orchestrators must obtain explicit user
-  approval (a flag or a question) before invoking it.
+- **Invocation = consent**, at whatever level the invocation happened. Direct call: the call is the
+  consent. From an orchestrator: the orchestrator's invocation is, and both `/ship-phase` and
+  `/ship-solution` sweep at every phase boundary by default. What is never implicit is the **release** —
+  a `ZZ` patch still requires `--release` or an explicit confirmation (see below).
 - **One finding = one focused commit**, each with a regression test; the LLM is always mocked — no paid
   API call in any test.
 - **Green before, green after.** Start from a green baseline; only commit passing code; end with a full

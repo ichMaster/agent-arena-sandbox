@@ -48,8 +48,8 @@ regenerate from `spec/` via the skills, using each run as a subject for tracking
 `agent/`, `games/`, `web/`, `tests/` as reproducible; treat `spec/` and `.claude/skills/` as the real
 source.
 
-> Before any regeneration run, check the **stale tags** caveat under *Versioning* — it will silently
-> skip every version otherwise.
+> A version whose release tag exists is skipped by both orchestrators — see *Versioning*. The repo
+> currently has no tags, so nothing is skipped.
 
 ## Two build workflows — pick one deliberately
 
@@ -58,9 +58,11 @@ Both live in `.claude/skills/`; they are not meant to be mixed within one versio
 **A. GitHub-driven — the only one that runs from the current state:**
 `generate-issues` → `upload-issues` → `execute-issues` (implements from real GitHub issues, closing
 them as it goes) → `review-and-fix-issues` → `release-version`. Orchestrated per phase/version, with
-per-phase chat reports and an opt-in end-of-phase hardening sweep, by **`/ship-phase`**. It starts by
-generating the issues files, so it does not need `spec/implementation/` to be populated. Needs an
-authenticated `gh`; this repo has **no GitHub issues yet**, so `upload-issues` creates them fresh.
+per-phase chat reports and an end-of-phase hardening sweep (default on; `--no-harden` skips it), by
+**`/ship-phase`**. It takes a comma-separated list of selectors, fills in missing prerequisite
+versions, and starts by generating the issues files — so it does not need `spec/implementation/` to be
+populated. Needs an authenticated `gh`; this repo has **no GitHub issues yet**, so `upload-issues`
+creates them fresh.
 
 **B. File-driven, offline — currently inoperable:**
 `reconcile-issues vXX.YY` (correct a pre-generated issues file against the real code, in place, with a
@@ -149,12 +151,11 @@ Strict `vXX.YY.ZZ` tied to the roadmap: `XX` = roadmap version (v01–v05), `YY`
 `ZZ` = bugfix/patch. Releases are cut per **version** (`vXX.YY.00`), after that version's issues all
 land and its tests are green — **never bump the version without explicit user confirmation.**
 
-> **⚠️ Stale tags block regeneration.** This repo carries **63 local tags inherited from the old
-> bake-off repo** — `opus-vXX.YY.ZZ`, `opus-opus-vXX.YY.ZZ`, `opus-sonnet-vXX.YY.ZZ`, and plain
-> `vXX.YY.ZZ` — spanning several *different* builds. **None are pushed to `origin`.** Both `/ship-phase`
-> and `/ship-solution` skip any version whose release tag already exists, so a regeneration run would
-> skip essentially everything. Decide with the user whether to delete these local tags and what tag
-> prefix this repo uses going forward, **before** the first `release-version` call.
+> **Tags are unprefixed and the repo starts with none.** The 63 tags inherited from the old bake-off
+> repo (`opus-*`, `opus-opus-*`, `opus-sonnet-*`, plain `vXX.YY.ZZ`) were deleted; `origin` has never
+> had any. This matters because both orchestrators **skip any version whose release tag exists** — a
+> stray tag silently removes that version from the plan. Before re-adding tags by hand, check what it
+> would exclude.
 
 ## Retired conventions — do not reintroduce
 

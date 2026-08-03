@@ -57,10 +57,12 @@ Full detail in [spec/game_specification.md](spec/game_specification.md) and
 
 Two orchestrators drive the full pipeline. They are not meant to be mixed within one version.
 
-**`/ship-phase <vXX|vXX.YY|range> [--harden]`** — GitHub-driven. Per version:
+**`/ship-phase <selector>[,<selector>…] [--no-harden]`** — GitHub-driven. Takes one selector or a
+comma-separated list; missing prerequisite versions are filled in and already-released ones skipped.
+Per version:
 `generate-issues` → `upload-issues` → `execute-issues` → `review-and-fix-issues` →
-`release-version vXX.YY.00`, then an opt-in hardening sweep at the phase boundary and a chat report.
-Requires an authenticated `gh`.
+`release-version vXX.YY.00`, then a hardening sweep at the phase boundary (default; `--no-harden` to
+skip) and a chat report. Requires an authenticated `gh`.
 
 **`/ship-solution [scope]`** — offline, file-driven. Same spine, but it reconciles *pre-existing*
 issues files instead of generating them, skips GitHub entirely, hardens automatically at each phase
@@ -70,10 +72,9 @@ boundary, and writes one timed statistics report at the end.
 > vXX.YY-issues.md` files, and there are none. Use `/ship-phase`, which generates them, or restore
 > issues files first.
 
-> **Stale tags will block either orchestrator.** This repo carries 63 local tags inherited from an
-> earlier multi-build repo (`opus-*`, `opus-opus-*`, `opus-sonnet-*`, and plain `vXX.YY.ZZ`). Both
-> orchestrators skip any version whose release tag already exists, so a run would skip all 15 versions
-> and do nothing. None of these tags are pushed to `origin`. Clear them before the first run.
+> **A version whose release tag exists is skipped** by both orchestrators. The repo currently has no
+> tags at all — the 63 inherited from an earlier multi-build repo were deleted, and `origin` has never
+> had any — so a run covers everything. Re-adding a tag by hand removes that version from the plan.
 
 Individual skills can also be invoked directly to build without releasing.
 

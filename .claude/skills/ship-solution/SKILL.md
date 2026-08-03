@@ -22,7 +22,7 @@ This is a simplified, offline sibling of `/ship-phase`. The differences (by ship
 | 3. execute-issues | **`execute-issues-file`** — implement straight from the file (no GitHub, no issue-closing) |
 | 4. review-and-fix-issues | **kept** (unchanged) |
 | 5. release-version | **kept** (unchanged) |
-| end-of-phase HARDEN | **automatic** after every phase (not opt-in) |
+| end-of-phase HARDEN | **same** — automatic after every phase (ship-phase can opt out with `--no-harden`; here there is no opt-out) |
 | per-phase chat report | **replaced** — a single **detailed report** generated after **all** phases |
 
 A **thin orchestrator**: it sequences the sub-skills (`reconcile-issues`, `execute-issues-file`,
