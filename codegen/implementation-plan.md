@@ -167,12 +167,12 @@ architecture §2–3. This is the single source of truth; the prose in architect
 **Dependencies:** TRK-001
 
 **Acceptance criteria:**
-- [ ] All 31 event types from architecture §3 are represented.
-- [ ] A valid example per type validates; an example missing each required `data` key fails, naming
+- [x] All 31 event types from architecture §3 are represented.
+- [x] A valid example per type validates; an example missing each required `data` key fails, naming
       the missing key.
-- [ ] An `issue.*` event without `scope.version` fails validation.
-- [ ] `validate()` imports nothing outside the stdlib.
-- [ ] Architecture §2–3 and `schema.json` agree — a test asserts the type list in the doc table matches
+- [x] An `issue.*` event without `scope.version` fails validation.
+- [x] `validate()` imports nothing outside the stdlib.
+- [x] Architecture §2–3 and `schema.json` agree — a test asserts the type list in the doc table matches
       the schema's `oneOf` branches.
 
 ---
