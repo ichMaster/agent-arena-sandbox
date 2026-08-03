@@ -193,6 +193,44 @@ function showError(detail) {
   }
 }
 
+// Appends one chat bubble, styled by sender (web_ui_specification.md §4.4): the
+// message whose sender equals this client's own seat symbol renders as "you"
+// (left/blue, agent-x); everyone else renders right/pink (agent-o).
+function renderChat(sender, message) {
+  const messages = document.getElementById("messages");
+  if (!messages) return;
+
+  const isSelf = sender === mySymbol;
+  const wrapper = document.createElement("div");
+  wrapper.className = `msg ${isSelf ? "agent-x" : "agent-o"}`;
+
+  const who = document.createElement("p");
+  who.className = "who";
+  who.textContent = isSelf ? "You" : sender;
+  wrapper.appendChild(who);
+
+  const bubble = document.createElement("div");
+  bubble.className = "bubble";
+  bubble.textContent = message;
+  wrapper.appendChild(bubble);
+
+  messages.appendChild(wrapper);
+  messages.scrollTop = messages.scrollHeight;
+}
+
+function handleChatSubmit(submitEvent) {
+  submitEvent.preventDefault();
+  if (!ws || ws.readyState !== WebSocket.OPEN || !isGameActive) return;
+
+  const input = document.getElementById("chat-input");
+  if (!input) return;
+  const message = input.value.trim();
+  if (!message) return;
+
+  ws.send(JSON.stringify({ action: "chat", payload: { message: message } }));
+  input.value = "";
+}
+
 // One case per server event (web_ui_specification.md §6.1).
 function routeEvent({ event, payload }) {
   switch (event) {
@@ -207,6 +245,7 @@ function routeEvent({ event, payload }) {
       updateActiveCard(payload.current_turn);
       break;
     case "chat_message":
+      renderChat(payload.sender, payload.message);
       break;
     case "game_over":
       handleGameOver(payload.result);
@@ -247,6 +286,11 @@ function init() {
     if (cell) {
       cell.addEventListener("click", () => handleCellClick(i));
     }
+  }
+
+  const chatForm = document.getElementById("chat-form");
+  if (chatForm) {
+    chatForm.addEventListener("submit", handleChatSubmit);
   }
 }
 
