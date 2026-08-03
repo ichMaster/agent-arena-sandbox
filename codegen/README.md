@@ -19,7 +19,7 @@ codegen/
 ├── runs/         one directory per run — the logs ARE the product (gitignored)
 ├── validate_run.py   the per-version gate on the RECORD
 ├── reset.py          delete what a run created, from the run's own log
-└── tests/            314 tests
+└── tests/            323 tests
 ```
 
 ---
