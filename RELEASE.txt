@@ -1,6 +1,22 @@
 AgentArena — Release Notes
 ===========================
 
+Version 02.02.00 (2026-08-04)
+------------------------------
+- AgentProfile: name/model_type/temperature/system_prompt/memory_limit
+  loaded from YAML, with clear errors on malformed YAML or a missing
+  required field. profiles/aggressive.yml: the first real persona
+  (ARENA-055).
+- MemoryWindow: a bounded rolling record of recent moves and chat,
+  eviction verified against a mixed sequence of both (ARENA-056).
+- build_prompt: composes persona + rendered board + valid moves +
+  memory history into one prompt string — no I/O, no model call
+  (ARENA-057).
+- Code review: no fix-now findings this phase (a low-risk phase — YAML
+  parsing, a deque, string assembly); one LOW finding deferred
+  alongside v01.01's analogous encapsulation note.
+- 123 tests passing, mypy --strict clean across games/server/agent.
+
 Version 02.01.00 (2026-08-04)
 ------------------------------
 - AgentResponse{move: int, comment: str} — the structured turn reply
