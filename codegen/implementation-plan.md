@@ -1,6 +1,8 @@
 # Tracking system — implementation plan
 
-**Status:** plan. No task below is started.
+**Status:** implemented. All 24 tasks are done and ticked; 242 tests pass with `mypy --strict`
+and `ruff` clean. Two known gaps remain in the UI, recorded under *Known gaps* below rather than
+quietly left for someone to discover.
 **Companions:** [ship-phase-tracking-vision.md](ship-phase-tracking-vision.md) (why · what the
 dashboard shows) · [architecture.md](architecture.md) (contracts · formats · test strategy) ·
 [dashboard-specification.md](dashboard-specification.md) (how the UI is built — tokens, components,
@@ -709,11 +711,27 @@ style.
 **Dependencies:** TRK-020
 
 **Acceptance criteria:**
-- [ ] The index rebuilds from run directories alone; deleting it loses nothing.
-- [ ] The heatmap distinguishes "0 failures" from "version not run" — they are different cells, not
+- [x] The index rebuilds from run directories alone; deleting it loses nothing.
+- [x] The heatmap distinguishes "0 failures" from "version not run" — they are different cells, not
       the same blank.
-- [ ] Selecting runs re-renders every panel against the same slice.
-- [ ] With one run present, comparison panels state that plainly instead of drawing a single-point chart.
+- [x] Selecting runs re-renders every panel against the same slice.
+- [x] With one run present, comparison panels state that plainly instead of drawing a single-point chart.
+
+---
+
+## Known gaps
+
+Everything below is built and tested. These two are real and are **not** ticked away:
+
+- **The burn-down panel still plots a hardcoded series.** Its shape, band and ideal line are correct
+  and the reducer produces every number it needs (`scope.known`, `est_low`/`est_high`,
+  `undecomposed`), but `app.js` has not been wired to read them — it renders the prototype's constants.
+  Small, mechanical, and visibly wrong on a live run: the curve will not match the numbers beside it.
+- **The run header's "NOW" line is prototype text.** Elapsed and ETA come from state; the
+  currently-executing node does not.
+
+Neither affects the tracker itself — the log, the reducer, the hooks and the API are complete. Both are
+`app.js` adapter work.
 
 ---
 

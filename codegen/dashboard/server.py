@@ -21,7 +21,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from tracker import paths
+from tracker import history, paths
 from tracker.reduce import reduce
 from tracker.state import read as read_state
 
@@ -77,6 +77,12 @@ def api_state(run_id: str | None = None) -> JSONResponse:
 def api_runs() -> JSONResponse:
     runs = sorted((p.name for p in paths.runs_root().glob("run-*") if p.is_dir()), reverse=True)
     return JSONResponse({"runs": runs, "active": active_run_id()})
+
+
+@app.get("/api/history")
+def api_history() -> JSONResponse:
+    """Cross-run comparison. `single_run` tells the UI to say so rather than draw a point."""
+    return JSONResponse(history.comparison())
 
 
 @app.get("/")

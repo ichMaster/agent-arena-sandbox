@@ -109,10 +109,19 @@ function renderAll(){
     commits: STATE.github?.commits || 0,
   });
   renderHeader(); renderKpis();
+  const failures = [];
   for (const fn of [renderTree, renderBurn, renderVel, renderTime,
                     renderFail, renderSuite, renderQuality]) {
-    try { fn(); } catch (err) { /* one broken panel must not blank the page */ }
+    try { fn(); } catch (err) { failures.push(fn.name + ': ' + err.message); }
   }
+  reportFailures(failures);
+}
+
+/* A failed panel is reported in the footer, never swallowed and never allowed to
+   blank the page -- an observability tool that hides its own faults is the worst kind. */
+function reportFailures(f){
+  const el = document.getElementById('panel-errors');
+  if (el) el.textContent = f.length ? 'panels failed to render: ' + f.join(' | ') : '';
 }
 
 function renderHeader(){
@@ -124,6 +133,13 @@ function renderHeader(){
   const elapsed = document.getElementById('h-elapsed');
   if (elapsed) elapsed.textContent = mmss(STATE.elapsed_s || 0);
 }
+
+/* Panel configuration -- not data. The step and outcome orders map to categorical
+   slots, and the slot ORDER is the CVD-safety mechanism, so these are fixed. */
+const STEPS = [['generate','Generate issues',1],['upload','Upload issues',2],
+               ['execute','Execute issues',3],['review','Review & fix',4],['release','Release',5]];
+const QSEG  = [['fixnow','Fixed now',1],['hard','Hardened later',3],
+               ['defer','Still deferred',4],['held','Held',2]];
 
 const V = [];
 const ISSUES = [];
@@ -171,26 +187,36 @@ const findOpen=V.reduce((a,v)=>a+(v.find?v.find.defer+v.find.held:0),0);
 const vmean=id=>{const d=ISSUES.filter(i=>i.v===id);return d.reduce((a,i)=>a+i.dur,0)/d.length;};
 const velD=(vmean('v01.03')-vmean('v01.02'))/vmean('v01.02')*100;
 function renderKpis(){
-const undec = V.filter(v=>!DECOMPOSED.includes(v.id)).length;
-const known = V.filter(v=>DECOMPOSED.includes(v.id)).reduce((a,v)=>a+v.issues,0);
-const m2=vmean('v01.02'), m3=vmean('v01.03'), diff=Math.round(m2-m3);
-el('kpis').innerHTML=[
-  ['Issues done',`${done}`,`${known} known · ${known+undec*EST_LO}–${known+undec*EST_HI} projected`,''],
-  ['Versions','2 <small>/ 4</small>','v01.03 in progress',''],
-  // label names the unit AND the subject; delta names the comparison, shows its value,
-  // and states the direction in words — never an arrow alone on a time metric.
-  ['Mean time per issue',mmss(m3)+' <small>in v01.03</small>',
-     `${Math.abs(diff)}s ${diff>0?'faster':'slower'} than v01.02 (${mmss(m2)})`, diff>0?'up':''],
-  ['Tests passing','156','+58 since v01.02','up'],
-  ['Tests failing now','0','expected — see failure surface',''],
-  ['Review findings','2 <small>open</small>','2 HIGH deferred',''],
-  ['GitHub issues',`${REPO.created} <small>created</small>`,`${REPO.closed} closed · ${REPO.created-REPO.closed} open`,''],
-  ['Commits',`${REPO.commits}`,`on ${REPO.branch} · from ${REPO.head}`,'']
-].map(([l,v,d,c])=>`<div class="kpi"><div class="lbl">${l}</div><div class="val">${v}</div><div class="delta ${c}">${d}</div></div>`).join('');
+  const sc = STATE.scope || {}, m = STATE.metrics || {}, gh = STATE.github || {};
+  const vmean = id => { const d = ISSUES.filter(i=>i.v===id); return d.length ? d.reduce((a,i)=>a+i.dur,0)/d.length : 0; };
+  const vers = V.map(v=>v.id);
+  const cur = vers[vers.length-1], prev = vers[vers.length-2];
+  const m1 = cur ? vmean(cur) : 0, m0 = prev ? vmean(prev) : 0;
+  const diff = Math.round(m0 - m1);
+  const tiles = [
+    ['Issues done', `${m.issues_done ?? 0}`,
+     `${sc.known ?? 0} known · ${sc.est_low ?? 0}–${sc.est_high ?? 0} projected`, ''],
+    ['Versions', `${m.versions_released ?? 0} <small>/ ${(STATE.plan||[]).length}</small>`,
+     STATE.status === 'running' ? 'in progress' : STATE.status, ''],
+    // Label names unit AND subject; delta names its comparison, shows that value, and
+    // states direction in words -- a green arrow on a TIME metric is ambiguous (spec §4.3).
+    ['Mean time per issue', cur ? `${mmss(m1)} <small>in ${cur}</small>` : '—',
+     prev && Math.abs(diff) >= 1
+       ? `${Math.abs(diff)}s ${diff > 0 ? 'faster' : 'slower'} than ${prev} (${mmss(m0)})`
+       : 'no prior version to compare', diff > 0 ? 'up' : ''],
+    ['Tests passing', `${m.tests_passing ?? 0}`, '', ''],
+    ['Tests failing now', '0', 'expected — see failure surface', ''],
+    ['Review findings', `${m.findings_open ?? 0} <small>open</small>`,
+     `${m.findings_total ?? 0} raised`, ''],
+    ['GitHub issues', `${gh.created ?? 0} <small>created</small>`,
+     `${gh.closed ?? 0} closed · ${gh.open ?? 0} open`, ''],
+    ['Commits', `${gh.commits ?? 0}`, `on ${gh.branch || '-'} · from ${gh.head_sha || '-'}`, ''],
+  ];
+  safeSet('kpis', tiles.map(([l,v,d,c]) =>
+    `<div class="kpi"><div class="lbl">${l}</div><div class="val">${v}</div><div class="delta ${c}">${d}</div></div>`
+  ).join(''));
 }
 
-
-/* ── 3 · live tree ──────────────────────────────────────────────────────── */
 function renderTree(){
   const sc={ok:'s-ok',run:'s-run',todo:'s-skip',fail:'s-fail'};
   const word={ok:'done',run:'running',todo:'queued',fail:'failed'};
@@ -435,6 +461,3 @@ el('theme').addEventListener('click',()=>{
   document.documentElement.setAttribute('data-theme', cur? (cur==='dark'?'light':'dark') : (sysDark?'light':'dark'));
 });
 
-/* live clock, so the prototype reads as a live view */
-let t=51*60+47;
-setInterval(()=>{t++; el('h-elapsed').textContent=mmss(t);},1000);

@@ -246,6 +246,9 @@ class _Accumulator:
         if tail == "start":
             node.start = node.start or ts
             node.status = "running"
+            # issue.start carries size and area; the panels need them on the node, and
+            # only the *.end branch was persisting data.
+            node.data.update({k: v for k, v in data.items() if k in {"size", "area"}})
         elif tail in CLOSERS:
             node.end = ts
             node.status = {"end": str(status or "ok"), "skipped": "skip",
