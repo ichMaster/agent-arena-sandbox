@@ -31,6 +31,20 @@ class Repository:
     async def get_match(self, match_id: str) -> Match | None:
         return await self.session.get(Match, match_id)
 
+    async def get_participant(self, token: str) -> Participant | None:
+        return await self.session.get(Participant, token)
+
+    async def seat_of(self, match_id: str, token: str) -> str | None:
+        """The seat this token already holds — a pure read, never an assignment.
+
+        Used by the WS layer (architecture.md §5.4 step 1, §6.2 ``joined``); unlike
+        ``assign_symbol``, this never mutates a participant's row.
+        """
+        participant = await self.get_participant(token)
+        if participant is None or participant.match_id != match_id:
+            return None
+        return participant.symbol
+
     async def add_participant(
         self, token: str, match_id: str, name: str, is_spectator: bool
     ) -> None:

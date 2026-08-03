@@ -127,6 +127,34 @@ async def test_assign_symbol_retries_after_a_concurrent_write_conflict(
 
 
 @pytest.mark.asyncio
+async def test_seat_of_is_a_pure_read(db_engine: AsyncEngine) -> None:
+    repo = await _repo(db_engine)
+    await repo.create_match("m1")
+    await repo.add_participant("t1", "m1", "Alice", is_spectator=False)
+    await repo.add_participant("spec", "m1", "Watcher", is_spectator=True)
+
+    assert await repo.seat_of("m1", "unknown-token") is None
+    assert await repo.seat_of("other-match", "t1") is None
+    assert await repo.seat_of("m1", "spec") is None  # spectator: unseated, not an error
+
+    # seat_of must never assign a symbol as a side effect.
+    participant = await repo.get_participant("t1")
+    assert participant is not None and participant.symbol is None
+
+    symbol = await repo.assign_symbol("m1", "t1")
+    assert await repo.seat_of("m1", "t1") == symbol
+
+    # calling seat_of again doesn't change anything.
+    assert await repo.seat_of("m1", "t1") == symbol
+
+
+@pytest.mark.asyncio
+async def test_get_participant_returns_none_for_unknown_token(db_engine: AsyncEngine) -> None:
+    repo = await _repo(db_engine)
+    assert await repo.get_participant("nope") is None
+
+
+@pytest.mark.asyncio
 async def test_log_move_and_log_chat_persist_in_order(db_engine: AsyncEngine) -> None:
     repo = await _repo(db_engine)
     await repo.create_match("m1")
