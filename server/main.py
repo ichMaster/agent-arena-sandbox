@@ -22,7 +22,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
 
 
-app = FastAPI(title="AgentArena", version="01.02.00", lifespan=lifespan)
+app = FastAPI(title="AgentArena", version="01.03.00", lifespan=lifespan)
 
 
 async def get_repository() -> AsyncIterator[Repository]:

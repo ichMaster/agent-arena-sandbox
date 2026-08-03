@@ -1,6 +1,22 @@
 AgentArena — Release Notes
 ===========================
 
+Version 01.03.00 (2026-08-04)
+------------------------------
+- IssuedToken, issue_token/validate_token — the token is the participants
+  primary key (ARENA-044).
+- Lobby request/response schemas: JoinRequest, CreateMatchResponse,
+  JoinResponse, HealthResponse (ARENA-045).
+- server/match.py: thin assign_seat/release_seat pass-through over the
+  Repository (ARENA-046).
+- server/main.py: FastAPI app + lifespan(init_models), GET /api/v1/health,
+  POST /api/v1/lobby/match, POST /api/v1/lobby/join — 404 on unknown match,
+  seat assigned immediately for non-spectators (ARENA-047, v01.03 release
+  gate).
+- Code review fix: JoinRequest.player_name/match_id now bounded
+  (Field(min_length=1, max_length=64)) against unbounded lobby input.
+- 74 tests passing, mypy --strict clean across games/server/agent.
+
 Version 01.02.00 (2026-08-03)
 ------------------------------
 - Async SQLite engine, session maker & init_models, with a connect-time
