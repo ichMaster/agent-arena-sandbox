@@ -10,6 +10,19 @@ Two independent checks:
 
 * hooks saw a tool call; did the skill emit the matching semantic event?
 * the log claims a commit; does ``git log`` contain it, and vice versa?
+
+The emit check is scoped **per issue, and only while an issue is open**. Hooks are
+context-free -- ``tool.used`` carries no scope -- so a naive count charges the skill for
+every ``pytest`` on the machine: the orchestrator's own green baseline, the review step's
+verification, a maintainer debugging the tracker. None of those has an
+``issue.validate.end`` to match, and counting them made the rate a measure of how much
+debugging happened rather than of skill compliance. Out-of-band runs are reported as a
+note instead, so the information is kept without corrupting the rate.
+
+Per *issue* rather than per *invocation* because one validation legitimately runs pytest
+more than once (the application suite, a collection check, the tracker's own suite). The
+question worth asking is "did the skill record that it validated this issue at all?",
+which is what the rate now answers.
 """
 
 from __future__ import annotations
@@ -25,12 +38,17 @@ from tracker import paths
 @dataclass
 class Report:
     run_id: str
+    #: Issues that ran pytest while open -- the denominator of the emit rate.
     validate_observed: int = 0
+    #: How many of those also emitted at least one ``issue.validate.end``.
     validate_emitted: int = 0
+    #: pytest runs seen with no issue open. Reported, never charged to a skill.
+    out_of_band_validations: int = 0
     commits_claimed: int = 0
     commits_in_git: int = 0
     missing_in_git: list[str] = field(default_factory=list)
     missing_in_log: list[str] = field(default_factory=list)
+    unemitted_issues: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
 
     @property
@@ -54,7 +72,7 @@ class Report:
             "",
             "| Check | Observed | Emitted | Rate |",
             "|---|---|---|---|",
-            f"| pytest runs vs `issue.validate.end` | {self.validate_observed} | "
+            f"| issues validated vs `issue.validate.end` | {self.validate_observed} | "
             f"{self.validate_emitted} | {_pct(self.emit_rate)} |",
             f"| commits claimed vs in `git log` | {self.commits_claimed} | "
             f"{self.commits_in_git} | {_pct(self.commit_rate)} |",
@@ -106,20 +124,42 @@ def reconcile(run_id: str, git_shas: set[str] | None = None) -> Report:
     events = _events(run_id)
     report = Report(run_id=run_id)
 
+    open_issue: str | None = None
+    validated: set[str] = set()  # issues that ran pytest while open
+    emitted: set[str] = set()  # issues that recorded issue.validate.end
+
     for event in events:
         etype = event.get("type")
         data = event.get("data") or {}
-        if etype == "tool.used":
+        scope = event.get("scope") or {}
+        if etype == "issue.start":
+            open_issue = str(scope.get("issue") or "") or None
+        elif etype == "issue.end":
+            open_issue = None
+        elif etype == "tool.used":
             program = str(data.get("program", ""))
             sub = str(data.get("subcommand", ""))
-            if program.startswith("pytest") or sub == "pytest" or "pytest" in program:
-                report.validate_observed += 1
+            # `pytest` is the hook's own flag and covers compound commands; the
+            # program/subcommand fallbacks keep older logs readable.
+            if data.get("pytest") or program.startswith("pytest") or sub == "pytest":
+                if open_issue:
+                    validated.add(open_issue)
+                else:
+                    # No issue open: a baseline, a review-step check, or a maintainer
+                    # at a shell. No skill owes an emit for these.
+                    report.out_of_band_validations += 1
         elif etype == "issue.validate.end":
-            report.validate_emitted += 1
+            issue = str(scope.get("issue") or "") or open_issue
+            if issue:
+                emitted.add(issue)
         elif etype in {"issue.commit", "finding.fixed", "harden.finding.fixed"}:
             sha = str(data.get("sha", ""))
             if sha:
                 report.commits_claimed += 1
+
+    report.validate_observed = len(validated)
+    report.validate_emitted = len(validated & emitted)
+    report.unemitted_issues = sorted(validated - emitted)
 
     shas_in_log = {
         str((e.get("data") or {}).get("sha", ""))
@@ -134,10 +174,16 @@ def reconcile(run_id: str, git_shas: set[str] | None = None) -> Report:
         report.notes.append("_git history unavailable; commit check skipped._")
         report.commits_in_git = report.commits_claimed
 
-    if report.emit_rate is not None and report.emit_rate < 1.0:
+    if report.unemitted_issues:
         report.notes.append(
-            f"_{report.validate_observed - report.validate_emitted} validation run(s) were "
-            "observed by hooks but not emitted by the skill._"
+            "_Validated by hooks but never recorded by the skill: "
+            + ", ".join(f"`{issue}`" for issue in report.unemitted_issues)
+            + "._"
+        )
+    if report.out_of_band_validations:
+        report.notes.append(
+            f"_{report.out_of_band_validations} pytest run(s) happened with no issue open "
+            "(baselines, review checks, ad-hoc shells). Not charged to any skill._"
         )
     return report
 

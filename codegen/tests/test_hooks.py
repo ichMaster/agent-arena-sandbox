@@ -116,7 +116,8 @@ def test_the_hook_is_fast_enough_to_run_on_every_tool_call(active_run: str) -> N
 
 def test_summarise_bash_keeps_shape_not_content() -> None:
     summary = on_tool_use.summarise_bash("git commit -m 'a message with a secret'")
-    assert summary == {"program": "git", "subcommand": "commit", "argv_len": 4}
+    assert summary == {"program": "git", "subcommand": "commit", "argv_len": 4,
+                       "pytest": False}
 
 
 # ── the Stop hook ────────────────────────────────────────────────────────────
@@ -164,17 +165,31 @@ def test_run_is_open_treats_a_torn_tail_as_still_open(active_run: str) -> None:
 
 
 def _seed(run_id: str, validations: int, observed: int, shas: list[str]) -> None:
-    scope = {"phase": "v01", "version": "v01.01", "step": "execute-issues", "issue": "ARENA-001"}
-    for _ in range(observed):
+    """``observed`` issues each ran pytest; the first ``validations`` of them emitted.
+
+    Compliance is measured per issue, and only while one is open -- hooks are
+    context-free, so a pytest run outside an issue belongs to no skill.
+    """
+    for index in range(observed):
+        scope = {"phase": "v01", "version": "v01.01", "step": "execute-issues",
+                 "issue": f"ARENA-{index + 1:03d}"}
+        emit.emit("issue.start", emitter="skill:execute-issues", status="ok", scope=scope,
+                  data={"size": "M", "area": "games"})
         emit.emit("tool.used", emitter="hook:on-tool-use", status="ok",
-                  data={"tool": "Bash", "program": "pytest", "argv_len": 3})
-    for i in range(validations):
-        emit.emit("issue.validate.end", emitter="skill:execute-issues", status="ok", scope=scope,
-                  data={"attempt": i + 1, "pytest": {"passed": 1, "failed": 0, "duration_s": 1.0},
-                        "mypy": {"errors": 0}})
+                  data={"tool": "Bash", "program": "pytest", "argv_len": 3, "pytest": True})
+        if index < validations:
+            emit.emit("issue.validate.end", emitter="skill:execute-issues", status="ok",
+                      scope=scope,
+                      data={"attempt": 1, "pytest": {"passed": 1, "failed": 0},
+                            "mypy": {"errors": 0}})
+        emit.emit("issue.end", emitter="skill:execute-issues", status="ok", scope=scope,
+                  data={"attempts": 1})
+
+    commit_scope = {"phase": "v01", "version": "v01.01", "step": "execute-issues",
+                    "issue": "ARENA-001"}
     for sha in shas:
-        emit.emit("issue.commit", emitter="skill:execute-issues", status="ok", scope=scope,
-                  data={"sha": sha, "files": ["x.py"]})
+        emit.emit("issue.commit", emitter="skill:execute-issues", status="ok",
+                  scope=commit_scope, data={"sha": sha, "files": ["x.py"]})
 
 
 def test_full_compliance_reports_one_hundred_percent(active_run: str) -> None:
@@ -190,7 +205,8 @@ def test_a_missing_emit_is_reported_and_named(active_run: str) -> None:
     _seed(active_run, validations=1, observed=4, shas=[])
     report = reconcile.reconcile(active_run, git_shas=set())
     assert report.emit_rate == 0.25
-    assert "not emitted by the skill" in report.to_markdown()
+    assert "never recorded by the skill" in report.to_markdown()
+    assert report.unemitted_issues == ["ARENA-002", "ARENA-003", "ARENA-004"]
 
 
 def test_a_commit_claimed_but_absent_from_git_is_flagged(active_run: str) -> None:
@@ -246,3 +262,38 @@ def test_settings_json_holds_matchers_and_commands_only() -> None:
     for group in settings.get("hooks", {}).values():
         for matcher in group:
             assert set(matcher) <= allowed, set(matcher) - allowed
+
+
+# ── pytest detection anywhere in the command (architecture §10.4) ────────────
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "pytest -q",
+        ".venv/bin/pytest -q",
+        "cd repo && .venv/bin/pytest",
+        "python3 -m pytest tests/",
+        'echo "=== tests ===" && ../.venv/bin/pytest -c codegen/pyproject.toml',
+        "py.test",
+    ],
+)
+def test_pytest_is_detected_anywhere_in_the_command(command: str) -> None:
+    """argv[0] alone misses most real invocations, undercounting validated issues."""
+    assert on_tool_use.summarise_bash(command)["pytest"] is True
+
+
+@pytest.mark.parametrize(
+    "command",
+    ["git status", "gh issue list", "python3 -m tracker.emit issue.start", "ls -la"],
+)
+def test_non_pytest_commands_are_not_flagged(command: str) -> None:
+    assert on_tool_use.summarise_bash(command)["pytest"] is False
+
+
+def test_the_command_text_is_still_never_recorded() -> None:
+    """The §8 rule holds: a bool is added, not any part of the command line."""
+    command = "pytest --token=SECRET-abc123 -q"
+    summary = on_tool_use.summarise_bash(command)
+    assert summary["pytest"] is True
+    assert "SECRET-abc123" not in json.dumps(summary)

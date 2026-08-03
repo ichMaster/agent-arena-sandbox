@@ -43,7 +43,28 @@ def summarise_bash(command: str) -> dict[str, Any]:
         "program": program,
         "subcommand": subcommand if program in {"git", "gh", "python3", "python"} else "",
         "argv_len": len(parts),
+        "pytest": _runs_pytest(parts),
     }
+
+
+def _runs_pytest(parts: list[str]) -> bool:
+    """Whether this command runs pytest anywhere, not just as argv[0].
+
+    argv[0] alone misses most real invocations -- `cd x && pytest`, `.venv/bin/pytest`,
+    `python -m pytest` -- and the reconciliation pass (architecture §10.4) uses this to
+    tell a validated issue from an unvalidated one. Undercounting there quietly weakens
+    the only check on whether a skill recorded its validation at all.
+
+    Matches token *basenames* and the `-m pytest` form. It records a single bool, never
+    any part of the command line, so the §8 rule that a raw command must not be stored
+    still holds.
+    """
+    for index, token in enumerate(parts):
+        if Path(token).name in {"pytest", "py.test"}:
+            return True
+        if token == "-m" and index + 1 < len(parts) and parts[index + 1] == "pytest":
+            return True
+    return False
 
 
 def build_data(payload: dict[str, Any]) -> dict[str, Any] | None:
