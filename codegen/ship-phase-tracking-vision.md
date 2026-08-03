@@ -259,8 +259,33 @@ doesn't belong on the dashboard.
 |---|---|
 | Current node (phase / version / step / issue) | latest `*.start` with no matching `*.end` |
 | Versions done / planned · issues done / planned | `version.end` count vs the Step 0 plan |
+| **Work remaining** (issues, and versions) | plan − completed; the burn-down series |
+| **Estimated time to finish (ETA)** | see the model below |
 | Elapsed per node, and total | `*.end.ts − *.start.ts`; live nodes use `now − start` |
 | Versions skipped as already-released | `version.skipped` |
+
+**The ETA model.** An ETA is only possible because Step 0 confirms the *whole* plan before anything
+runs — total scope is known up front. Remaining time decomposes into three terms, each measurable from
+the log:
+
+```
+ETA  =  remaining_issues   × mean(issue duration)          ← the bulk
+      + remaining_versions × mean(review + release time)   ← per-version overhead
+      + remaining_phases   × mean(harden time)             ← per-phase overhead
+```
+
+Two honest caveats, both of which the panel must show rather than hide:
+
+- **Scope for undecomposed versions is unknown.** `generate-issues` produces 3–7 issues per version, and
+  a version's issue count doesn't exist until its `step.end{generate-issues}`. For versions not yet
+  decomposed, substitute the observed mean so far (or the 3–7 band before there is one).
+- **Early estimates are near-worthless.** With two issues completed, `mean(issue duration)` is two
+  samples. **Render the ETA as a range, not a point**, widen the range in proportion to how much scope
+  is still undecomposed, and show nothing at all until at least one version has finished. A confident
+  wrong number is worse than a blank.
+
+Weighting by issue **size** (`S`/`M`/`L`, already on every issue in the summary table) sharpens this
+considerably — use per-size means once each size has samples, and fall back to the pooled mean until then.
 
 **Time — "where does the time actually go"**
 
@@ -269,6 +294,9 @@ doesn't belong on the dashboard.
 | Duration per step (generate/upload/execute/review/release) | `step.start` → `step.end` |
 | Per-issue split: implement / validate / commit | `issue.start` → `issue.implement.end` → `issue.validate.end` → `issue.commit` |
 | Throughput — issues completed per hour | rolling count of `issue.end{ok}` |
+| **Velocity — mean time per issue**, overall and per version | mean of `issue.start` → `issue.end` |
+| **Velocity — time per version**, wall-clock | `version.start` → `version.end` |
+| Velocity trend — is it speeding up or slowing down? | per-version means in roadmap order |
 | Time lost to retries | Σ durations of `issue.failed` attempts |
 
 **Failure — "what went wrong, and where"**
@@ -277,6 +305,7 @@ doesn't belong on the dashboard.
 |---|---|
 | Attempts per issue | `issue.validate.end.data.attempt` |
 | **First-pass rate** — issues green on attempt 1 | share of `issue.end{ok}` with max attempt = 1 |
+| **Tests failed** — count, per validation attempt | `issue.validate.end.data.pytest.failed` |
 | Failure reason (assertion / type error / import…) | `issue.validate.end.data` on a `fail` |
 | Reverted work | `issue.reverted` — **exists nowhere else**, see §1 |
 | Gate blocks and why the run stopped | `gate.blocked`, `run.aborted` |
@@ -285,6 +314,8 @@ doesn't belong on the dashboard.
 
 | Metric | Derived from |
 |---|---|
+| **Findings raised by code review**, per version | count of `finding.raised` |
+| **Review density** — findings per issue shipped | `finding.raised` ÷ `issue.end{ok}` |
 | Findings by severity (HIGH / MEDIUM / LOW) | `finding.raised.data.severity` — *not* `status`, which is the `ok`/`fail`/`skip`/`held` outcome |
 | Fix-now vs deferred | `finding.classified` |
 | Closed by review vs by the harden sweep | `finding.fixed` vs `harden.finding.fixed` |
@@ -311,27 +342,74 @@ executing node, as text, with elapsed beside it (`v01.02 · ARENA-007 · validat
 current value is a stat tile or a hero number — never a one-bar chart. Run status uses the **status
 palette** (running / ok / failed / held) with an icon and a word, never color alone.
 
-**2 · KPI row — stat tiles.** Versions done, issues done, tests passing (with delta since run start),
-first-pass rate, findings open. Value + delta + sparkline each. A handful of headline numbers is a KPI
-row, not a grouped bar chart.
+Beside it, **ETA as a range** — `~38–52 min remaining` — never a single number, and **blank until at
+least one version has finished**. An ETA is the most-read and least-reliable number on the page; the
+range is what keeps it honest. Show what it is based on on hover (n issues sampled, how much scope is
+still undecomposed).
+
+**2 · KPI row — stat tiles.** Value + delta + sparkline each; a handful of headline numbers is a KPI
+row, not a grouped bar chart. The six that matter:
+
+| Tile | Reads |
+|---|---|
+| Issues | `18 / 27` · +3 since last version |
+| Versions | `2 / 5` |
+| Velocity | `4m 12s` per issue · ▼ 18% vs previous version |
+| Tests passing | `184` · +41 |
+| Tests failing **now** | `0` — see the note under panel 7 |
+| Review findings | `7` open · 2 HIGH |
 
 **3 · Live tree — the primary panel, and it is a tree, not a chart.** run → phase → version → step →
 issue, each row showing status and elapsed, the active branch expanded. Five nested levels with
 per-node state is more classes than color can carry; the honest form is an indented list with status
 icons. Everything else on the page is secondary to this.
 
-**4 · Where time went — horizontal stacked bar, one bar per version, segments = the five steps.**
+**4 · Burn-down — line, remaining issues against elapsed time.** The canonical "will this land"
+picture: actual remaining work descending toward zero, with a straight **dashed ideal line** from
+(start, total) to (projected end, 0). Dashing is correct *here* specifically because the ideal line is
+a projection — that is the one thing dashing should mean, which is why gridlines and axes must stay
+solid.
+
+Two refinements worth having:
+
+- **Weight by issue size.** Burning down raw issue *count* makes three `S` issues look like more
+  progress than one `L`. Weighting by S/M/L (1/3/5, say) tracks real work and makes the curve far less
+  jumpy.
+- **The line goes UP sometimes, and that is a feature.** Remaining work *increases* when
+  `generate-issues` decomposes the next version and adds its issues to the plan. Show those step-ups —
+  they are the visual signature of scope arriving, and smoothing them away would hide the single
+  biggest source of ETA error.
+
+**5 · Velocity — bar per version, mean time per issue.** Answers "are we speeding up or slowing down"
+across the run. Ordered categories on an ordered axis, one hue.
+
+> A mean hides its own outliers: one issue that failed validation four times drags a version's mean up
+> and looks like a slow version rather than a hard issue. Pair this panel with panel 7, or overlay the
+> per-issue points on each bar so the spread is visible.
+
+**6 · Where time went — horizontal stacked bar, one bar per version, segments = the five steps.**
 Part-to-whole wants a stacked bar, horizontal because the version labels are long. Categorical color
 across five steps sits inside the comfortable range, with a legend always present. A convenient
 property of the pipeline: because steps are **strictly gated and sequential**, the composition bar
 *is* the chronology — no separate Gantt is needed.
 
-**5 · Failure surface — attempts per issue, bar, with emphasis.** Most issues pass first time, so
+**7 · Failure surface — attempts per issue, bar, with emphasis.** Most issues pass first time, so
 categorical color across every issue would bury the signal. Use **emphasis**: issues needing >1
 attempt in the accent hue, the rest in de-emphasis gray. That is the whole point of the panel —
 "which issues fought back" — and emphasis is the form that says it.
 
-**6 · Suite trajectory — line, one series, no legend.** Tests passing per version over time. The title
+**Failed tests belong here, not on the suite chart.** A subtlety that decides where the number goes:
+`execute-issues` only ever commits code that passes, so **the committed suite is green by
+construction** and a "tests failing" count sits at 0 for the entire run except during a failed
+validation attempt. It is not a health metric — it is a *failure-mode* metric, and it is only
+meaningful attached to the attempt that produced it. Render it as the failure detail on each
+>1-attempt bar (`ARENA-007 · attempt 1 · 3 failed · test_reconnect.py`), and keep the KPI tile as a
+live indicator that is 0 almost always and briefly non-zero when something is being fought.
+
+A steady 0 there is therefore not good news — it is the expected reading. The informative number is
+**how many attempts it took to get to 0**, which is what the bars show.
+
+**8 · Suite trajectory — line, one series, no legend.** Tests passing per version over time. The title
 names the series, so no legend box.
 
 > ⚠️ **Do not put suite duration on this chart.** Test count (0–250) and suite duration (0–8s) are
@@ -339,10 +417,24 @@ names the series, so no legend box.
 > the single most common charting mistake and this panel is exactly where it would happen. Use a second
 > small chart, or index both to 100 at v01.01 on one axis.
 
-**7 · Quality flow — stacked bar per version, segments = outcome.** Fixed-now / hardened / still
-deferred / held. Severity is an **ordered** scale, so where severity is the encoding it takes the
-ordinal ramp or the status palette (it genuinely means "how bad") — never eight categorical hues, and
-always with an icon and label beside it.
+**9 · Quality flow — stacked bar per version, segments = outcome.** *How many issues did code review
+find, and what closed them.* One bar per version, height = findings raised by `review-and-fix-issues`,
+segmented into fixed-now / hardened-later / still-deferred / held. Part-to-whole across four outcomes
+is a stacked bar; four segments is inside the comfortable range with a legend.
+
+Severity is an **ordered** scale, so where severity is the encoding it takes the ordinal ramp or the
+status palette (it genuinely means "how bad") — never eight categorical hues, and always with an icon
+and label beside it.
+
+Two readings to support directly, because they are the questions actually worth asking:
+
+- **Review density — findings per issue shipped.** Raw finding counts track version size; the ratio
+  does not. A version that produced 3 findings across 7 issues is healthier than one that produced 3
+  across 2, and only the ratio says so.
+- **Who closed it.** `finding.fixed` (the review's own fix-now pass) versus `harden.finding.fixed` (the
+  phase-boundary sweep) versus still open. If hardening is consistently closing HIGH findings that
+  review deferred, the fix-now/defer classification is miscalibrated — a fact about the *skills*, which
+  is exactly the kind of thing this project exists to surface.
 
 ### 6.3 Cross-run comparison — where this earns its keep
 
@@ -365,7 +457,7 @@ These are not stylistic preferences; each prevents a specific known failure.
   adjacent-pair separation is computable, so compute it.
 - **Color follows the entity, never its rank.** Filtering to three versions must not repaint the
   survivors — a reader who learned "review is teal" stays right.
-- **No dual-axis chart anywhere on the page.** See panel 6.
+- **No dual-axis chart anywhere on the page.** See panel 8.
 - **Live updates hold the previous render** at reduced opacity while new events land. No skeleton
   flash, no layout jump — events arrive every few seconds, so a flashing dashboard would be unusable.
 - **Every chart has a table-view twin**, and tooltips enhance rather than gate: no value is reachable
