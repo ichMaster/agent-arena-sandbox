@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class JoinRequest(BaseModel):
-    match_id: str
-    player_name: str
+    match_id: str = Field(min_length=1, max_length=64)
+    player_name: str = Field(min_length=1, max_length=64)
     spectator: bool = False
 
 

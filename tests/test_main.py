@@ -56,6 +56,17 @@ def test_create_then_join_happy_path(client: TestClient) -> None:
     assert "token" in response.json()
 
 
+def test_join_rejects_oversized_player_name(client: TestClient) -> None:
+    """Regression test for code review #1 (v01.03): unbounded lobby input."""
+    match_id = client.post("/api/v1/lobby/match").json()["match_id"]
+
+    response = client.post(
+        "/api/v1/lobby/join",
+        json={"match_id": match_id, "player_name": "x" * 65},
+    )
+    assert response.status_code == 422
+
+
 def test_join_unknown_match_returns_404(client: TestClient) -> None:
     response = client.post(
         "/api/v1/lobby/join", json={"match_id": "does-not-exist", "player_name": "Alice"}
