@@ -1,6 +1,31 @@
 AgentArena -- Release Notes
 ===========================
 
+Version 01.02.00 (2026-08-03)
+---------------------------
+Roadmap phase v01.02 -- Persistence layer (SQLite).
+
+- Async SQLAlchemy engine over sqlite+aiosqlite with a config-driven URL, an
+  async_sessionmaker(expire_on_commit=False), and a connect-time
+  PRAGMA foreign_keys=ON -- SQLite disables foreign keys per connection, so
+  without it every constraint would be decorative.
+- Four tables (matches, participants, moves, chat_messages) with
+  UNIQUE(match_id, symbol), making "at most one X and one O" a database
+  guarantee rather than an application convention.
+- Repository: the single seam for all database access, implementing the
+  seat rule of architecture.md 5.2 in order -- observers refused permanently,
+  idempotent reconnect, match-full, then the first free symbol. Seats are keyed
+  by token, never by display name.
+- Move and chat logs, and reconstruct_game: live state is recovered by replaying
+  the move log through a fresh TicTacToe, so no serialize step is added to
+  GameInterface and the board survives a restart, not just a reconnect.
+- current_turn is derived and is None once the game is over, satisfying the
+  architecture.md 6.2 rule by construction.
+- Code review fixes: a game with no turn rule now raises instead of reporting
+  "game over"; the seat race returns "no seat" instead of an IntegrityError.
+
+Tests: 160 passing. mypy --strict clean.
+
 Version 01.01.00 (2026-08-03)
 ---------------------------
 Roadmap phase v01.01 -- Project skeleton & the game engine.
