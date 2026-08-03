@@ -225,3 +225,6 @@ __marimo__/
 # Everything else under codegen/ (tracker/, hooks/, dashboard/, docs) IS committed.
 codegen/runs/
 codegen/var/
+
+# macOS
+.DS_Store
