@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-arena"
+# Packaging version only. The release version of record is the VERSION file and
+# RELEASE.txt (see the versioning rules in CLAUDE.md); release-version does not
+# rewrite this field.
+version = "0.1.0"
+description = "AgentArena - LLM agents playing turn-based games through an authoritative server"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "pytest-asyncio>=0.23",
+  "mypy>=1.8",
+]
+
+# Explicit package list, deliberately NOT auto-discovery. This is a flat layout,
+# so setuptools would otherwise find web/, profiles/, spec/, scripts/ and codegen/
+# as candidate top-level packages and refuse to build with
+# "Multiple top-level packages discovered in a flat-layout".
+[tool.setuptools]
+packages = ["games", "server", "agent"]
+
+[tool.mypy]
+strict = true
+python_version = "3.11"
+# The repo-wide gate is `mypy games server agent` with no flags. Strict comes from
+# here; there is no mypy.ini, and there must not be -- mypy treats a missing
+# --config-file as a hard error and would then type-check nothing.
+
+[tool.pytest.ini_options]
+# Scoped to tests/ deliberately. This repo also contains the code-generation
+# tracker's own suite under codegen/, which requires its own config
+# (codegen/pyproject.toml: testpaths + `-p pytester`). Once this file exists it
+# becomes pytest's rootdir config and shadows the codegen one, so collecting
+# codegen/tests/ from here would error on a missing `pytester` fixture.
+# Run the tracker suite explicitly instead:  pytest -c codegen/pyproject.toml
+testpaths = ["tests"]
