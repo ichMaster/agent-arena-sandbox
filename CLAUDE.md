@@ -8,9 +8,13 @@ This is **`ichMaster/agent-arena-sandbox`**, a standalone, independently develop
 single remote (`origin`) and no siblings. It was seeded from a branch of an earlier multi-model bake-off
 repo, but that link is severed — there is no `upstream`, and nothing here should be pushed anywhere else.
 
-`main` holds a **complete, working implementation** of Agent Arena at **v05.03.00** (MVP complete):
-`server/`, `agent/`, `games/`, `web/`, `tests/`, `profiles/`, `scripts/`, plus `pyproject.toml`,
-`VERSION`, and `RELEASE.txt`. Baseline on a clean checkout: **226 tests pass, `mypy --strict` clean.**
+**The working tree currently has no application code.** `server/`, `agent/`, `games/`, `web/`,
+`tests/`, `profiles/`, `scripts/`, `pyproject.toml`, `VERSION` and `RELEASE.txt` were deliberately
+cleared ahead of a fresh generation run, along with everything in `spec/implementation/`. Do not
+assume any module exists — check first.
+
+The last complete build reached **v05.03.00** (226 tests passing, `mypy --strict` clean) and remains
+in git history on `main` at `ded4091`, if a reference implementation is ever needed.
 
 The durable assets — the things worth protecting — are **not** the application code:
 
@@ -18,10 +22,11 @@ The durable assets — the things worth protecting — are **not** the applicati
 - `spec/architecture.md` — technical design (module layout, seams, wire contracts, identity model).
 - `spec/roadmap.md` — the 5-version / 15-phase build plan (`vXX.YY`, each with Goal/Tasks/DoD/Tests).
 - `spec/web_ui_specification.md` + `spec/ui_prototype.html` — the Web UI's behavior and visual design.
-- `spec/implementation/vXX.YY-issues.md` — per-version issue breakdowns for all 15 versions
-  (v01.01 → v05.03), with `ARENA-OPUS-###` ids. Plus each version's `-execution-report.md` and
-  `-code-review.md`, and `ship-solution-report.md` from the run that produced the current `main`.
 - `.claude/skills/*` — ten SDLC skills that generate the repo (below).
+
+`spec/implementation/` is where the skills write their issues files, execution reports, and code
+reviews as they run. It is currently **empty** — the previous run's 46 files were cleared with the
+code they described.
 
 ## What this project is actually for
 
@@ -39,9 +44,9 @@ Two work streams follow from that:
    exists.
 
 Consequently: **the application code is regenerable output.** The intended cycle is to delete it and
-regenerate from `spec/` + the issues files via the skills, using each run as a subject for tracking.
-Treat `server/`, `agent/`, `games/`, `web/`, `tests/` as reproducible; treat `spec/` and
-`.claude/skills/` as the real source.
+regenerate from `spec/` via the skills, using each run as a subject for tracking. Treat `server/`,
+`agent/`, `games/`, `web/`, `tests/` as reproducible; treat `spec/` and `.claude/skills/` as the real
+source.
 
 > Before any regeneration run, check the **stale tags** caveat under *Versioning* — it will silently
 > skip every version otherwise.
@@ -50,22 +55,22 @@ Treat `server/`, `agent/`, `games/`, `web/`, `tests/` as reproducible; treat `sp
 
 Both live in `.claude/skills/`; they are not meant to be mixed within one version.
 
-**A. File-driven, offline (uses the issues files already in the repo):**
-`reconcile-issues vXX.YY` (correct the pre-generated issues file against the real code, in place, with
-a dated `⟳ Reconciled` mark — no code written) → `execute-issues-file vXX.YY` (implement straight from
-the file: implement → validate → commit → push per issue, dependency-ordered, **no GitHub**) →
-`review-and-fix-issues vXX.YY` → `release-version vXX.YY.00`. Orchestrated end-to-end (all versions,
-one final timed statistics report) by **`/ship-solution`**. This is the workflow that produced the
-current `main`, and the natural default here.
-
-**B. GitHub-driven:**
+**A. GitHub-driven — the only one that runs from the current state:**
 `generate-issues` → `upload-issues` → `execute-issues` (implements from real GitHub issues, closing
 them as it goes) → `review-and-fix-issues` → `release-version`. Orchestrated per phase/version, with
-per-phase chat reports and an opt-in end-of-phase hardening sweep, by **`/ship-phase`**.
+per-phase chat reports and an opt-in end-of-phase hardening sweep, by **`/ship-phase`**. It starts by
+generating the issues files, so it does not need `spec/implementation/` to be populated. Needs an
+authenticated `gh`; this repo has **no GitHub issues yet**, so `upload-issues` creates them fresh.
 
-> **Before using workflow B:** this repo has **no GitHub issues at all** — the `ARENA-OPUS-###` issues
-> that the issues files reference lived in the old bake-off repo and are not reachable. `upload-issues`
-> would create them fresh here. Confirm that's intended before running it.
+**B. File-driven, offline — currently inoperable:**
+`reconcile-issues vXX.YY` (correct a pre-generated issues file against the real code, in place, with a
+dated `⟳ Reconciled` mark — no code written) → `execute-issues-file vXX.YY` (implement straight from
+the file, **no GitHub**) → `review-and-fix-issues vXX.YY` → `release-version vXX.YY.00`. Orchestrated
+by **`/ship-solution`**.
+
+> **`/ship-solution` will do nothing right now.** It builds its plan from the
+> `spec/implementation/vXX.YY-issues.md` files present, and there are none — as do `reconcile-issues`
+> and `execute-issues-file`. Use workflow A, or restore/author issues files first.
 
 Rules that hold across all skills, either workflow:
 - **One issue = one commit.** Never mix work from multiple issue IDs; never work on more than one at a time.
@@ -155,6 +160,16 @@ land and its tests are green — **never bump the version without explicit user 
   hosts them.
 - **The `.agents/` skillset** (a simpler, separate `generate-issues`/`upload-issues`/`execute-issues`
   set) has been deleted. Use `.claude/skills/*`.
-- The `opus-` tag prefix and `ARENA-OPUS-###` issue namespace are **legacy** from the bake-off, still
-  hardcoded throughout `.claude/skills/*` and the issues files. They no longer prevent any collision.
-  Changing them is a deliberate, repo-wide decision — ask rather than doing it piecemeal.
+- The `opus-` tag prefix is **legacy** from the bake-off — 12 references across `.claude/skills/*`. It
+  no longer prevents any collision. Changing it is a deliberate, repo-wide decision.
+- **Known drift inside the skills**, worth fixing before or during any instrumentation work:
+  - **Issue-id namespace disagrees.** `ship-phase` says ids live in the `ARENA-OPUS-###` namespace
+    (lines 131, 168), but `generate-issues`, `upload-issues` and `execute-issues` all use plain
+    `ARENA-xxx`, starting at `ARENA-001` when no issues files exist — which is now the case.
+  - **Tag prefix disagrees.** `ship-phase` says to tag `opus-vXX.YY.00`, but `release-version`
+    hardcodes `git tag -a v<version>` with no prefix parameter. The repo's inherited `opus-opus-*`
+    and `opus-sonnet-*` tags suggest this mismatch has misfired before.
+  - **`execute-issues` still warns against copying from sibling branches** (lines 25–28), naming
+    branches on a remote this repo no longer has.
+  - **`execute-issues` validates with `mypy --config-file mypy.ini`**, but strict mode is configured
+    in `pyproject.toml` and no `mypy.ini` is generated.

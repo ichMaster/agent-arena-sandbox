@@ -1,103 +1,103 @@
-# AgentArena
+# AgentArena Sandbox
 
-A real-time, LLM-agent Tic-Tac-Toe theater. Anthropic **Haiku**-powered agents play each other — or
-a human — over WebSockets, watchable live in a browser as a **Player** (claims a seat, plays + chats)
-or an **Observer** (no seat, watches board + chat).
+A workspace for **instrumenting LLM-driven code generation**. The deliverable here is not an
+application — it is the *process* that builds one, made observable.
 
-## Architecture at a glance
+The repo holds two things: a complete specification for a non-trivial application, and a set of SDLC
+skills that generate that application from the spec. Running the skills produces a working codebase;
+the point of this project is to **track that run as it happens** and surface it as a real-time
+dashboard of generation statistics.
 
-Three cooperating processes over an event-driven WebSocket protocol (no REST polling for game state):
+The application is therefore a **test fixture, not the product** — deliberately regenerable, and
+deliberately absent from the working tree between runs.
 
-- **Game Server** (Python + FastAPI) — the sole authority. Owns state in SQLite, validates every move
-  server-side, and pushes JSON events to connected clients.
-- **Agent Client** (Python CLI) — a standalone LLM-driven process. The server pushes full turn state;
-  the agent replies with one structured `{move, chat}` per turn. A pure external client over HTTP/WS —
-  imports nothing from `server/`.
-- **Web UI** — vanilla HTML/CSS/JS served at `/ui`; a stateless renderer of server events.
+## What's here
 
-Two stable seams make this pluggable: **`GameInterface`** (how a game plugs into the server) and
-**`LLMClient`** (how an agent talks to a model vendor — Anthropic Haiku today, swappable by config).
+```
+spec/              the specification the skills build from
+  game_specification.md    product vision, MVP scope, phased plan
+  architecture.md          module layout, seams, wire contracts, identity model
+  roadmap.md               5 versions × 15 phases, each with Goal/Tasks/DoD/Tests
+  web_ui_specification.md  the Web UI's behavior
+  ui_prototype.html        its visual design source
 
-Details: [spec/game_specification.md](spec/game_specification.md) (product vision + scope),
-[spec/architecture.md](spec/architecture.md) (module layout, contracts, identity model),
-[spec/web_ui_specification.md](spec/web_ui_specification.md) (the Web UI's behavior + design).
+.claude/skills/    the ten SDLC skills that generate the code
+  generate-issues · upload-issues · execute-issues · execute-issues-file
+  reconcile-issues · review-and-fix-issues · harden-findings · release-version
+  ship-phase · ship-solution        ← the two orchestrators
+```
+
+Plus `CLAUDE.md` (conventions and current state), `.env.example`, and this file.
+
+## What's not here
+
+`server/`, `agent/`, `games/`, `web/`, `tests/`, `profiles/`, `scripts/`, `pyproject.toml`, `VERSION`,
+`RELEASE.txt` — all generated output, cleared ahead of a fresh instrumented run. The last complete
+build reached v05.03.00 (226 tests passing, `mypy --strict` clean) and remains in git history on
+`main`.
+
+`spec/implementation/` is also empty. The skills write their issues files, execution reports, and code
+reviews there as they run.
+
+## The application the skills build
+
+Agent Arena: a real-time, LLM-agent Tic-Tac-Toe theater. Anthropic Haiku-powered agents play each
+other — or a human — over WebSockets, watchable live in a browser as a **Player** (claims a seat,
+plays and chats) or an **Observer** (no seat, watches).
+
+Three cooperating processes over an event-driven WebSocket protocol: a FastAPI **game server** that is
+the sole authority over state, a standalone **agent CLI** that is a pure external client, and a vanilla
+HTML/CSS/JS **web UI** that only renders server events. Two seams keep it pluggable — `GameInterface`
+(how a game plugs in) and `LLMClient` (how an agent reaches a model vendor).
+
+Full detail in [spec/game_specification.md](spec/game_specification.md) and
+[spec/architecture.md](spec/architecture.md).
+
+## Regenerating the application
+
+Two orchestrators drive the full pipeline. They are not meant to be mixed within one version.
+
+**`/ship-phase <vXX|vXX.YY|range> [--harden]`** — GitHub-driven. Per version:
+`generate-issues` → `upload-issues` → `execute-issues` → `review-and-fix-issues` →
+`release-version vXX.YY.00`, then an opt-in hardening sweep at the phase boundary and a chat report.
+Requires an authenticated `gh`.
+
+**`/ship-solution [scope]`** — offline, file-driven. Same spine, but it reconciles *pre-existing*
+issues files instead of generating them, skips GitHub entirely, hardens automatically at each phase
+boundary, and writes one timed statistics report at the end.
+
+> **`/ship-solution` cannot run in the current state.** It plans from the `spec/implementation/
+> vXX.YY-issues.md` files, and there are none. Use `/ship-phase`, which generates them, or restore
+> issues files first.
+
+> **Stale tags will block either orchestrator.** This repo carries 63 local tags inherited from an
+> earlier multi-build repo (`opus-*`, `opus-opus-*`, `opus-sonnet-*`, and plain `vXX.YY.ZZ`). Both
+> orchestrators skip any version whose release tag already exists, so a run would skip all 15 versions
+> and do nothing. None of these tags are pushed to `origin`. Clear them before the first run.
+
+Individual skills can also be invoked directly to build without releasing.
 
 ## Setup
 
+No dependencies to install until code exists — `pyproject.toml` is itself generated. After a run:
+
 ```bash
 python3 -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
+.venv/bin/pip install -e ".[dev]"
 ```
 
-Put your key in `./.env` (gitignored; copy from `.env.example`):
+A model API key is needed only to run a **live agent**, never to generate or test. Copy
+[.env.example](.env.example) to `./.env` (gitignored) and fill it in:
 
 ```
 ANTHROPIC_API_KEY=sk-...
 ```
 
-The key is read **only** by the agent process (`agent/agent.py`) — it is never sent to or logged by
-the server or the Web UI. The server, the UI, and the test suite make **no paid calls** and need no
-key at all.
+The key is read only by the agent process. It is never sent to or logged by the server or the UI, and
+the test suite makes **zero paid API calls** — the `LLMClient` seam is always mocked.
 
-## Run
+## Status
 
-Start the server first, in its own terminal:
-
-```bash
-uvicorn server.main:app
-```
-
-Then pick a mode:
-
-### 1. Human vs. agent
-
-Open `http://127.0.0.1:8000/ui` in a browser → **Host** a match, note the match id. Then run an agent
-against it:
-
-```bash
-python agent/agent.py --match-id <id> --profile profiles/aggressive.yml
-```
-
-Play your moves in the browser; the agent (Ironclaw, an aggressive taunter) plays and chats back.
-
-### 2. Agent vs. agent — the headline demo
-
-```bash
-./scripts/run_arena.sh
-```
-
-One command creates a match and launches two contrasting personas — **Ironclaw** (aggressive,
-`profiles/aggressive.yml`) vs **Bastion** (cautious, `profiles/cautious.yml`) — against each other,
-with deterministic seat assignment. It prints the match id and tails both agents' logs.
-
-### 3. Observe
-
-Open `/ui` → **Observe** → paste the match id from either mode above. Watch the board and chat update
-live, without ever claiming a seat. **Use Observe, not Join** — Join claims a player seat.
-
-## WebSocket protocol (summary)
-
-One socket per client: `GET /ws/match/{match_id}?token=<token>` (the token comes from
-`POST /api/v1/lobby/join`).
-
-**Server → client events:** `joined`, `state_update`, `chat_message`, `game_over`, `error`.
-**Client → server actions:** `submit_move {move}`, `chat {message}`.
-
-"Your turn" is derived, not pushed: a client acts when `current_turn` in a `joined`/`state_update`
-event equals its own seat symbol. Full contract: [spec/architecture.md](spec/architecture.md) §6.
-
-## Testing
-
-```bash
-pytest
-mypy
-```
-
-The `LLMClient` seam is **always mocked** in tests (an autouse `tests/conftest.py` guard enforces
-this even for a test that forgets to mock it locally) — the suite makes **zero paid API calls**.
-
-## Data & reset
-
-State lives in `./arena.db` (SQLite, gitignored) and survives restarts. Delete the file to reset all
-matches.
+The tracking instrumentation and the dashboard are **not built yet**. Today the skills report only
+after the fact: `/ship-phase` reports once per phase to chat, `/ship-solution` stamps a timestamp per
+version and writes a single report at the end. Neither emits anything consumable during a run.
