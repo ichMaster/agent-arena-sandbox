@@ -17,7 +17,6 @@ codegen/
 ├── hooks/        Claude Code hooks — the independent floor  (stdlib only)
 ├── dashboard/    FastAPI server + a no-build page on :8420
 ├── runs/         one directory per run — the logs ARE the product (gitignored)
-├── validate_run.py   the per-version gate on the RECORD
 ├── reset.py          delete what a run created, from the run's own log
 └── tests/            323 tests
 ```
@@ -156,28 +155,6 @@ restart the session after changing it.
 Two behaviours worth checking early, because they fail quietly: the burn-down's uncertainty
 band should be **widest at the start** and narrow as each version decomposes, and the `Now`
 line should name the **deepest running node**, not a finished one.
-
----
-
-## The gate you must not skip
-
-```bash
-python3 codegen/validate_run.py --version v03.03
-```
-
-This is a gate on the **record**, not on the build. The generated code can be perfect while
-the log of it is wrong, and that is the failure this project cannot afford. Instrumentation
-fails *quietly*: a skill that forgets an emit still produces a log that parses, reduces and
-renders — the gap only appears when someone asks the question that event was meant to answer.
-Discovering it at version ten means nine versions were recorded wrong.
-
-It checks that the log parses, that every event validates against the schema, that nothing is
-quarantined, that the version emitted its start/end, that all five steps and every issue are
-recorded, and that skill-emit compliance is ≥ 95%.
-
-Exit codes: **0** pass · **2** a check failed · **1** no active run.
-
-`/ship-phase` runs this at every version boundary. Run it by hand any time.
 
 ---
 
