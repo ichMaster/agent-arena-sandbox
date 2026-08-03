@@ -73,6 +73,11 @@ by **`/ship-solution`**.
 > and `execute-issues-file`. Use workflow A, or restore/author issues files first.
 
 Rules that hold across all skills, either workflow:
+- **Issue ids are `ARENA-###`, globally sequential, and never restart.** `generate-issues` resolves
+  the next id as `max(highest on GitHub, highest in spec/implementation/*-issues.md) + 1`. GitHub is
+  checked because `spec/implementation/` is wiped between regeneration runs — scanning only local
+  files would restart at `ARENA-001` and collide with ids already on GitHub. `ARENA-001` is correct
+  only when both sources are genuinely empty.
 - **One issue = one commit.** Never mix work from multiple issue IDs; never work on more than one at a time.
 - **Respect the Dependency Tree** in each issues file — don't start an issue whose dependencies aren't committed.
 - **Tests ship with the feature**, and **the LLM is always mocked** in tests — never make a paid model call in tests/validation/CI.
@@ -163,9 +168,6 @@ land and its tests are green — **never bump the version without explicit user 
 - The `opus-` tag prefix is **legacy** from the bake-off — 12 references across `.claude/skills/*`. It
   no longer prevents any collision. Changing it is a deliberate, repo-wide decision.
 - **Known drift inside the skills**, worth fixing before or during any instrumentation work:
-  - **Issue-id namespace disagrees.** `ship-phase` says ids live in the `ARENA-OPUS-###` namespace
-    (lines 131, 168), but `generate-issues`, `upload-issues` and `execute-issues` all use plain
-    `ARENA-xxx`, starting at `ARENA-001` when no issues files exist — which is now the case.
   - **Tag prefix disagrees.** `ship-phase` says to tag `opus-vXX.YY.00`, but `release-version`
     hardcodes `git tag -a v<version>` with no prefix parameter. The repo's inherited `opus-opus-*`
     and `opus-sonnet-*` tags suggest this mismatch has misfired before.

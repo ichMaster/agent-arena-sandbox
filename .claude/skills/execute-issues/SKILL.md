@@ -11,7 +11,7 @@ generate a report.
 ## Usage
 
 ```
-/execute-issues <label> [--issue ARENA-xxx] [--dry-run]
+/execute-issues <label> [--issue ARENA-###] [--dry-run]
 ```
 
 The `<label>` is the GitHub phase label exactly as it appears (e.g., `v01.02::phase`).
@@ -46,11 +46,11 @@ The `<label>` is the GitHub phase label exactly as it appears (e.g., `v01.02::ph
 ### Step 1: Build execution queue
 
 From the GitHub issue list, build an ordered queue based on dependencies:
-- Parse ARENA-xxx IDs from issue titles (format: `ARENA-xxx: {title}`)
+- Parse ARENA-### IDs from issue titles (format: `ARENA-###: {title}`)
 - Determine dependency order from the phase issues file dependency tree
 - Issues with no unmet dependencies go first
 - Skip issues already closed on GitHub
-- If `--issue ARENA-xxx` is specified, execute only that issue (but verify its dependencies are closed)
+- If `--issue ARENA-###` is specified, execute only that issue (but verify its dependencies are closed)
 
 Show the user the execution plan and ask for confirmation.
 
@@ -60,11 +60,11 @@ For each issue in the queue:
 
 #### 2a. Assign and announce
 
-Print: `--- Starting ARENA-xxx: {title} ---`
+Print: `--- Starting ARENA-###: {title} ---`
 
 #### 2b. Read issue details
 
-Read the full issue description from the phase issues file (the detailed section for this ARENA-xxx).
+Read the full issue description from the phase issues file (the detailed section for this ARENA-###).
 
 #### 2c. Implement
 
@@ -96,7 +96,7 @@ validation/CI: **the `LLMClient` seam is always mocked**, never a live model cal
 ```bash
 git add {specific files created/modified}
 git commit -m "$(cat <<'EOF'
-ARENA-xxx: {title}
+ARENA-###: {title}
 
 {1-2 sentence summary of what was implemented}
 

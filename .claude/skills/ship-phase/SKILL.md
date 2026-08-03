@@ -128,7 +128,7 @@ reason and surfaced) applies unchanged.
 ### Step 3: REPORT the phase to chat
 
 After the phase (and its HARDEN sweep, if approved), **report the phase to chat** (not a file):
-- **Per version:** ARENA-OPUS id range → GitHub #s, execution commit range + test/typing status, review
+- **Per version:** ARENA id range → GitHub #s, execution commit range + test/typing status, review
   finding counts (**fixed-now / deferred**, with homes), any **Architecture impact** deltas, and the
   release tag.
 - **HARDEN outcome:** ran (which findings were fixed, the patch tag) / declined / not offered — plus
@@ -165,6 +165,6 @@ shipped, versions skipped as already-released, anything stopped early and what r
   `upload-issues`, `execute-issues`, `review-and-fix-issues`, `harden-findings`, `release-version`)
   and adds the gating; no logic of its own. Each sub-skill keeps its discipline — one issue = one
   commit, seam changes carry `spec/architecture.md` + contract test, IDs stay in this branch's
-  `ARENA-OPUS-###` namespace, releases use namespaced tags, every line generated fresh (never copied
+  `ARENA-###` namespace, releases use namespaced tags, every line generated fresh (never copied
   from a sibling branch).
 - **Ask on a bad target.** If the argument doesn't resolve to a real roadmap phase/version, ask.

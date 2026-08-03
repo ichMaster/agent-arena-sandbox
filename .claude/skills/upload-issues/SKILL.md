@@ -18,7 +18,7 @@ Example: `/upload-issues @spec/implementation/v01.02-issues.md`
 
 A phase issues file is the fine-grained breakdown of a ROADMAP phase (`vXX.YY`): each
 phase in [spec/roadmap.md](../../../spec/roadmap.md) is split into one or more
-`ARENA-xxx` issues by `/generate-issues`. If the file does not exist yet, run
+`ARENA-###` issues by `/generate-issues`. If the file does not exist yet, run
 `/generate-issues <phase>` first, then this skill.
 
 ## Instructions
@@ -38,9 +38,9 @@ Parse the **Issues Summary Table** to extract for each issue:
 - `Size` (S, M, L)
 - `Area` (the component: `games`, `server`, `agent`, `web`, `profiles`, `scripts`, `tests`)
 - `Phase` (the ROADMAP phase it implements, e.g. `v01.02`)
-- `Dependencies` (list of ARENA-xxx IDs)
+- `Dependencies` (list of ARENA-### IDs)
 
-Then parse each **detailed issue section** (heading with ARENA-xxx) to extract:
+Then parse each **detailed issue section** (heading with ARENA-###) to extract:
 `Description`, `What needs to be done`, `Dependencies`, `Expected result`,
 `Acceptance criteria` (should align with the phase DoD in roadmap.md).
 
@@ -100,7 +100,7 @@ For each issue (in order from the summary table):
 {checklist}
 
 ---
-**ID:** {ARENA-xxx}
+**ID:** {ARENA-###}
 **Size:** {S/M/L}
 **Version:** v{XX}
 **Area:** {games/server/agent/web/profiles/scripts/tests}
@@ -111,7 +111,7 @@ For each issue (in order from the summary table):
 
 ```bash
 gh issue create \
-  --title "ARENA-xxx: {title}" \
+  --title "ARENA-###: {title}" \
   --label "v01.02::phase,v01.02::size:{S/M/L},v01.02::area:{area}" \
   --body "$(cat <<'BODY'
 {issue body}
@@ -119,11 +119,11 @@ BODY
 )"
 ```
 
-3. Record the mapping: ARENA-xxx -> GitHub issue #number
-4. Report to user: `Created ARENA-xxx -> #{number}: {title}`
+3. Record the mapping: ARENA-### -> GitHub issue #number
+4. Report to user: `Created ARENA-### -> #{number}: {title}`
 5. If the issue depends on already-created issues, add a comment:
    ```bash
-   gh issue comment {issue-number} --body "Blocked by #{dep-issue-number} (ARENA-xxx)"
+   gh issue comment {issue-number} --body "Blocked by #{dep-issue-number} (ARENA-###)"
    ```
 6. Move to the next issue.
 

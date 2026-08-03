@@ -19,8 +19,8 @@ implements it).
 - `/generate-issues 01.02` — decompose ROADMAP phase **v01.02** → `spec/implementation/v01.02-issues.md`
 - `/generate-issues v02.01` — phase **v02.01** → `…/v02.01-issues.md`
 
-One file per **phase** (`vXX.YY`). IDs (`ARENA-xxx`) are **globally sequential** and
-continue across phase files — never reset per phase.
+One file per **phase** (`vXX.YY`). IDs (`ARENA-###`) are **globally sequential** and
+continue across phase files **and across regeneration runs** — never reset.
 
 ## Instructions
 
@@ -33,9 +33,31 @@ continue across phase files — never reset per phase.
    components the phase touches, and [spec/game_specification.md](../../../spec/game_specification.md)
    for the product vision and scope (MVP vs later).
 4. Read `CLAUDE.md` for code conventions, the module map, and the non-negotiable seams.
-5. **Find the next free `ARENA-xxx` id:** scan existing
-   `spec/implementation/v*-issues.md`; continue from the highest id used. If none exist
-   yet, start at `ARENA-001`.
+5. **Find the next free `ARENA-###` id — never restart the numbering.** Ids are globally
+   sequential across every phase *and every regeneration run*. Check **both** sources and
+   continue from whichever is higher:
+
+   ```bash
+   # (a) GitHub — the durable source: issues survive a wiped working tree
+   gh issue list --state all --limit 1000 --json title \
+     --jq '.[].title | capture("ARENA-(?<n>[0-9]+)").n' 2>/dev/null | sort -n | tail -1
+
+   # (b) local issues files — covers ids drafted but not yet uploaded
+   grep -rhoE 'ARENA-[0-9]+' --include='*-issues.md' spec/implementation/ 2>/dev/null \
+     | grep -oE '[0-9]+' | sed 's/^0*//' | sort -n | tail -1
+   ```
+
+   (Pass the directory with `--include`, not a `*-issues.md` glob — under zsh an unmatched glob
+   aborts the command before `2>/dev/null` can swallow it, and `spec/implementation/` may not exist.)
+
+   The next id is **`max(a, b) + 1`**, zero-padded to three digits (`ARENA-001`, `ARENA-047`,
+   `ARENA-118`). Start at `ARENA-001` **only if both sources come back empty**.
+
+   > `spec/implementation/` is cleared between regeneration runs, so scanning it alone would
+   > silently restart the sequence at 001 and collide with ids already on GitHub. That is why (a)
+   > is checked first and the two are combined rather than either being trusted on its own. If
+   > `gh` is unauthenticated or the repo has no issues, (a) yields nothing and (b) governs — say
+   > so in the report rather than silently assuming the sequence is fresh.
 6. If `…/v{XX.YY}-issues.md` already exists, ask whether to overwrite or append.
 
 ### Step 0.5: Reconcile with the real implementation
@@ -155,12 +177,12 @@ ARENA-{first} ({gate})
 **Companion documents:**
 - [roadmap.md](../roadmap.md) — version goals, per-phase Tasks/DoD/Tests (§v{XX.YY}).
 - [architecture.md](../architecture.md) — {the relevant § sections}.
-- Generated on upload: `v{XX.YY}-github-report.md` (ARENA-xxx → GitHub #), then `v{XX.YY}-execution-report.md`.
+- Generated on upload: `v{XX.YY}-github-report.md` (ARENA-### → GitHub #), then `v{XX.YY}-execution-report.md`.
 ````
 
 ### Step 3: Report
 
-Show the user: the file path, the issue count, the `ARENA-xxx` id range, and the
+Show the user: the file path, the issue count, the `ARENA-###` id range, and the
 critical path. Suggest the next step:
 
 ```
@@ -173,7 +195,9 @@ the local issues file.)
 ## Important Rules
 
 - **One file per phase** (`vXX.YY`) at `spec/implementation/v{XX.YY}-issues.md`.
-- **IDs are globally sequential** (`ARENA-xxx`), continuing across phase files — never reset per phase.
+- **IDs are globally sequential** (`ARENA-###`), continuing across phase files **and across
+  regeneration runs** — never reset. Resolve the next id from `max(GitHub, local issues files) + 1`
+  (Step 0.5); starting at `ARENA-001` is correct only when both sources are genuinely empty.
 - **Tests in every issue.** Acceptance criteria include the unit/contract/integration tests; the LLM is mocked, never a paid call.
 - **Seam = ARCHITECTURE + test together.** Any contract change lands its `spec/architecture.md` update and contract test in the same issue.
 - **Scope to the phase.** Map issues to the phase's Tasks/DoD; don't pull later phases in early (MVP-first, simplicity-first).

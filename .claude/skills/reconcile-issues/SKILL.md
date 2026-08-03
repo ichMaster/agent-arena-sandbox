@@ -28,7 +28,7 @@ never uses GitHub. It is the file-driven flow's answer to reconciliation — run
 ### Step 0: Read the issues + the real implementation
 
 1. Resolve the target to `spec/implementation/vXX.YY-issues.md` and read it fully (summary table,
-   dependency tree, each `### ARENA-xxx …` section).
+   dependency tree, each `### ARENA-### …` section).
 2. Read the **real current code** of the components the issues touch (route by
    [architecture.md](../../../spec/architecture.md) §2) — the actual module/file names, class/method
    signatures, seam contracts, WS event/action names, endpoints, and deps **as they exist now**.

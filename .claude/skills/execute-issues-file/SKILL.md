@@ -17,12 +17,12 @@ close.
 ## Usage
 
 ```
-/execute-issues-file <vXX.YY | path-to-issues-file> [--issue ARENA-xxx] [--dry-run]
+/execute-issues-file <vXX.YY | path-to-issues-file> [--issue ARENA-###] [--dry-run]
 ```
 
 - `/execute-issues-file v02.01` → executes `spec/implementation/v02.01-issues.md`
 - `/execute-issues-file @spec/implementation/v03.02-issues.md`
-- `--issue ARENA-xxx` → only that issue (its file-listed deps must already be committed)
+- `--issue ARENA-###` → only that issue (its file-listed deps must already be committed)
 - `--dry-run` → print the execution plan without making changes
 
 > [!IMPORTANT]
@@ -37,7 +37,7 @@ close.
 1. Confirm we are on the working dev branch (not a sibling) and the tree is clean (`git status`).
 2. Resolve the target to `spec/implementation/vXX.YY-issues.md` and **read it** — the Issues Summary
    Table (IDs, titles, size, area, dependencies), the Dependency Tree, and each detailed
-   `### ARENA-xxx …` section. **No `gh` is used.**
+   `### ARENA-### …` section. **No `gh` is used.**
 3. Read [spec/roadmap.md](../../../spec/roadmap.md) for the version goal + the `vXX.YY` DoD/Tests,
    [spec/architecture.md](../../../spec/architecture.md) for the contracts, and
    [spec/game_specification.md](../../../spec/game_specification.md) for scope (MVP vs later).
@@ -45,18 +45,18 @@ close.
 
 ### Step 1: Build the execution queue (from the file)
 
-- Parse the ARENA-xxx IDs + titles from the file's summary table; order them by the file's
+- Parse the ARENA-### IDs + titles from the file's summary table; order them by the file's
   **Dependency Tree** (issues with no unmet dependency first).
 - **Skip issues already implemented** — an issue whose ID already appears in a prior commit
-  (`git log --grep "ARENA-xxx:"`) is done; skip it (resumability).
-- With `--issue ARENA-xxx`, execute only that one (verify its file-listed deps are already committed).
+  (`git log --grep "ARENA-###:"`) is done; skip it (resumability).
+- With `--issue ARENA-###`, execute only that one (verify its file-listed deps are already committed).
 - Show the ordered plan and proceed (stop here if `--dry-run`).
 
 ### Step 2: Execute each issue (loop, in dependency order)
 
 For each issue:
 
-1. **Announce:** `--- Starting ARENA-xxx: {title} ---`.
+1. **Announce:** `--- Starting ARENA-###: {title} ---`.
 2. **Read** its detailed section from the issues file (What needs to be done / Acceptance criteria).
 3. **Implement** per `CLAUDE.md` + `spec/architecture.md`, routed by component
    ([architecture.md](../../../spec/architecture.md) §2): `games/` (pure engine, no server import),
@@ -71,7 +71,7 @@ For each issue:
 5. **Commit** (one issue = one commit; only code that passes validation):
    ```bash
    git commit -m "$(cat <<'EOF'
-   ARENA-xxx: {title}
+   ARENA-###: {title}
 
    {1-2 sentence summary of what was implemented}
 
