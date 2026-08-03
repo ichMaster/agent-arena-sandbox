@@ -78,7 +78,8 @@ Decide **FIX NOW vs DEFER** honestly:
   home (`v05.01`, `v02.03`, "cleanup/`/simplify`", "documented MVP scope"). Do **not** pull these
   forward.
 
-Commit the doc as the plan (a `docs:` commit).
+Commit the doc as the plan (a `docs:` commit) **and push it**. The review is worth keeping even if the
+fix pass is interrupted.
 
 ### Step 3: Implement the FIX-NOW items (with tests)
 
@@ -89,7 +90,8 @@ For each **FIX NOW** finding, in criticality order:
    The **LLM is always mocked** — no paid call in any test.
 3. **Validate:** `pytest` (green, deterministic) + `mypy` (strict). Only commit code that passes.
 4. **Commit** one focused change per finding, referencing the finding number
-   (`fix(<area>): … (code review #N)`), with the `Co-Authored-By` trailer.
+   (`fix(<area>): … (code review #N)`), with the `Co-Authored-By` trailer — **then `git push`**, the
+   same per-unit discipline `execute-issues` applies to issues. Never leave a landed fix unpushed.
 5. **Seam changes** (`GameInterface`/`LLMClient`/WS protocol/seat-by-token) update
    `spec/architecture.md` **and** the contract test in the **same** commit.
 
@@ -110,7 +112,8 @@ Edit the doc **in place**:
 - Update **"Suggested next actions"** (e.g. `/release-version` for a patch on a released phase; carry
   deferred items into their phase).
 
-Commit the doc update (a `docs:` commit).
+Commit the doc update (a `docs:` commit) **and push**. This skill must leave nothing unpushed — it is
+followed by `release-version`, but a run that stops here would otherwise strand every fix locally.
 
 ### Step 5: Report
 
@@ -133,6 +136,8 @@ adversarial pass (`/code-review ultra`) for confirmation.
   note in the review doc — so the next `/generate-issues` can reconcile the following version against
   what was really built, not the stale design.
 - **Never release.** No version bump, no tag — recommend `/release-version` and stop.
+- **Never leave work unpushed.** Every commit this skill makes is pushed immediately. It stops on a red
+  suite or a re-classified finding, so "the next step will push it" is not a safe assumption.
 - **Generate every line fresh.** Never `git checkout`/`cherry-pick`/merge code out of git history or any other ref.
 - **Ask on genuine ambiguity** — an unclear scope, or a borderline finding where fix-now vs defer is a
   real judgment call the user should make.

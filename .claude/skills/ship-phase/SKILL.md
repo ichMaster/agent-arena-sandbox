@@ -217,6 +217,13 @@ review only after execute closed the issues with a green report; **release only 
 fix-now items are committed and the suite is green**; the **next version only after this one is
 released**.
 
+**Every version boundary ends pushed and clean.** Before starting version N+1, verify `git status` is
+clean and the branch has **no unpushed commits** — `git push` if it does. Each sub-skill already pushes
+its own work (one issue = one commit = one push; review pushes each fix; `release-version` pushes the
+branch and its tag), so this is a check rather than new work — but it is the check that makes the
+guarantee real. This skill **stops on failure by design**, so halting mid-version is a normal outcome,
+not an edge case: a stop must never strand a version's work on one machine.
+
 ### Step 2: END OF PHASE — HARDEN (default; `--no-harden` to skip)
 
 When the phase's last version is released, sweep the deferred 🔴 HIGH / 🟠 MEDIUM findings accumulated
@@ -263,6 +270,9 @@ shipped, versions skipped as already-released, anything stopped early and what r
   homes and are surfaced as outstanding in the phase report. When it runs and lands fixes, ship them as
   a `ZZ` patch release on the phase's latest version. A fix that can't land cleanly is **held** by
   `harden-findings`' escape hatch, not forced.
+- **Every version boundary ends pushed and clean.** No unpushed commits, no dirty tree, before the
+  next version starts. This skill stops on failure by design, so a stop must never leave a version's
+  work on one machine only.
 - **Next version only after the previous is released.** The strict sequencing is what makes the
   RECONCILE step meaningful: version N+1's issues are generated against version N's real, fixed code.
 - **Reconciliation is step 0 of every version** (via `generate-issues` Step 0.5): real code + execution

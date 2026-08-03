@@ -182,6 +182,11 @@ Gate the hand-offs: reconcile → execute → review → release; **release only
 items are committed and the suite is green**; the **next version only after this one is released**.
 Do **not** report to chat between versions.
 
+**Every version boundary ends pushed and clean.** Before starting version N+1, verify `git status` is
+clean and there are **no unpushed commits** — `git push` if there are. The sub-skills each push their
+own work, so this is a check, not new work; it exists because this skill stops on failure, and a stop
+must never strand a version's work locally.
+
 ### Step 2: End of every phase — HARDEN (default; `--no-harden` to skip), then close the phase clock
 
 When a phase's last version is released, run the sweep. **This is the default** — invoking
@@ -246,6 +251,8 @@ phases/total. Every number must trace to the run (execution reports, review docs
   Reconciled` marks), the file-driven analogue of ship-phase's reconcile.
 - **Time every version.** Stamp `date +%s` at each version's start/end (and each phase's start/end and
   the run's start/end); persist rows as you go so no measurement is lost.
+- **Every version boundary ends pushed and clean** — no unpushed commits, no dirty tree, before the
+  next version starts.
 - **Release per VERSION**, after its fix-now items are fixed; **next version only after the previous is
   released**. Never batch versions; never release mid-version.
 - **The plan is roadmap-ordered and dependency-complete.** A selector list is a *set* of target
