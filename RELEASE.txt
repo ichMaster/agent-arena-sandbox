@@ -1,3 +1,16 @@
+Version 01.02.00 (2026-08-16)
+-----------------------------
+- server/database.py: async SQLAlchemy engine over sqlite+aiosqlite:///./arena.db,
+  connect-time FK pragma, init_models() (ARENA-075)
+- server/models.py: Match, Participant (UNIQUE(match_id, symbol)), Move, ChatMessage
+  ORM tables (ARENA-076)
+- server/repository.py: Repository CRUD -- create_match, get_match, add_participant,
+  release_seat, log_move, log_chat (ARENA-077)
+- reconstruct_game + current_turn: live state replayed from the move log, never stored
+  as mutable fields; full persistence/integration test suite (ARENA-078)
+- v01.02 code review: 1 fix-now -- current_turn could diverge from reconstruct_game's
+  own replayed state on an invalid logged move; fixed to derive from the same board
+
 Version 01.01.00 (2026-08-16)
 -----------------------------
 - Repo skeleton: pyproject.toml (explicit setuptools packages list, mypy --strict, pytest
