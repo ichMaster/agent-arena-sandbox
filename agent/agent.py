@@ -6,9 +6,11 @@ A true external client: imports nothing from server/, talks only over HTTP/WS.
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import os
 import random
+import sys
 from dataclasses import dataclass
 from typing import Any
 
@@ -117,6 +119,11 @@ class AgentSession:
             self.my_symbol = payload.get("symbol")
             print(f"[{self.profile.name}] joined as {self.my_symbol}", flush=True)
 
+        if event == "state_update":
+            last_move = payload.get("last_move")
+            if last_move:
+                self.memory.record_move(last_move.get("player"), last_move.get("move"))
+
         if event in ("joined", "state_update"):
             current_turn = payload.get("current_turn")
             if self.my_symbol is not None and current_turn == self.my_symbol:
@@ -127,8 +134,19 @@ class AgentSession:
                     f"[{self.profile.name}] move={response.move}: {response.comment}",
                     flush=True,
                 )
-                # Sending chat + submit_move lands in ARENA-095.
-        # chat_message / game_over handling lands in ARENA-095.
+                assert self._ws is not None
+                await self._ws.send(json.dumps(
+                    {"action": "chat", "payload": {"message": response.comment}}
+                ))
+                await self._ws.send(json.dumps(
+                    {"action": "submit_move", "payload": {"move": response.move}}
+                ))
+
+        elif event == "chat_message":
+            self.memory.record_chat(payload.get("sender", ""), payload.get("message", ""))
+
+        elif event == "game_over":
+            print(f"[{self.profile.name}] game over: {payload.get('result')}", flush=True)
 
 
 async def main(args: AgentArgs) -> None:
@@ -142,3 +160,11 @@ async def main(args: AgentArgs) -> None:
 
     session = AgentSession(profile, llm_client, args.server_url, args.match_id, token)
     await session.run()
+
+
+if __name__ == "__main__":
+    # Line-buffered so reasoning printed to stdout flushes promptly when the
+    # process is piped or redirected to a log file (architecture.md §7.1).
+    sys.stdout.reconfigure(line_buffering=True)  # type: ignore[union-attr]
+    sys.stderr.reconfigure(line_buffering=True)  # type: ignore[union-attr]
+    asyncio.run(main(parse_args()))

@@ -89,11 +89,15 @@ async def websocket_endpoint(websocket: WebSocket, match_id: str) -> None:
             return
 
         await websocket.accept()
-        await manager.connect(match_id, websocket, participant.token)
         try:
             symbol = await assign_symbol(repo, match_id, participant.token)
             game = await repo.reconstruct_game(match_id)
             current_turn = await repo.current_turn(match_id)
+            # joined is sent before this socket is registered with the manager --
+            # registering first would make it broadcast-eligible while joined is
+            # still in flight, so a concurrent broadcast (e.g. the opponent's
+            # opening move) could race it and arrive first on the wire, breaking
+            # "joined is always the first message a client receives" (§6.2).
             await manager.send_to(
                 websocket,
                 make_event(
@@ -106,6 +110,7 @@ async def websocket_endpoint(websocket: WebSocket, match_id: str) -> None:
                     },
                 ),
             )
+            await manager.connect(match_id, websocket, participant.token)
 
             while True:
                 raw = await websocket.receive_text()

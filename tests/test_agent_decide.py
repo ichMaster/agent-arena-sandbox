@@ -12,6 +12,18 @@ from agent.schemas import AgentResponse
 from tests.conftest import ScriptedLLMClient
 
 
+class _FakeWebSocket:
+    """Stands in for the live WS connection when a test drives _handle_event
+    directly: deciding on-turn sends chat + submit_move over self._ws, which is
+    otherwise None until AgentSession.connect() runs."""
+
+    def __init__(self) -> None:
+        self.sent: list[str] = []
+
+    async def send(self, message: str) -> None:
+        self.sent.append(message)
+
+
 def _session(llm_client: LLMClient) -> AgentSession:
     profile = AgentProfile(
         name="Aggressor", model_type="haiku", temperature=0.9,
@@ -75,6 +87,7 @@ async def test_decide_is_invoked_when_it_is_my_turn() -> None:
     llm = ScriptedLLMClient([AgentResponse(move=4, comment="center")])
     session = _session(llm)
     session.my_symbol = "X"
+    session._ws = _FakeWebSocket()  # type: ignore[assignment]
 
     await session._handle_event({
         "event": "state_update",

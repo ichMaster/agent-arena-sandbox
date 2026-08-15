@@ -13,6 +13,7 @@ import socket
 import tempfile
 from collections.abc import AsyncIterator
 
+import httpx
 import pytest
 import uvicorn
 
@@ -53,7 +54,16 @@ def _free_port() -> int:
 async def live_server() -> AsyncIterator[str]:
     """A real uvicorn server on a random free port -- the agent is a true external
     client (imports nothing from server/), so its own tests need a real listening
-    socket, not TestClient's in-process ASGI transport."""
+    socket, not TestClient's in-process ASGI transport.
+
+    server.database.engine is a module-level singleton, shared by every live_server
+    instance across the whole pytest session (each fixture use is a fresh uvicorn
+    process wrapping the same app/engine). A connection an abruptly-torn-down test
+    leaves mid-operation can sit corrupted in that shared pool and poison a later,
+    unrelated test with `sqlalchemy.exc.MissingGreenlet` -- disposing the pool after
+    every use guarantees the next test always gets fresh connections.
+    """
+    from server.database import engine
     from server.main import app
 
     port = _free_port()
@@ -62,8 +72,22 @@ async def live_server() -> AsyncIterator[str]:
     task = asyncio.create_task(server.serve())
     while not server.started:
         await asyncio.sleep(0.01)
+    base_url = f"http://127.0.0.1:{port}"
+    # server.started means the TCP listener is bound, not that the ASGI lifespan
+    # (init_models()) has finished -- a WS connect that races ahead of it can hit
+    # "WebSocket is not connected. Need to call accept first." Wait for a real
+    # request to actually succeed before handing the URL to a test.
+    async with httpx.AsyncClient() as probe:
+        for _ in range(200):
+            try:
+                if (await probe.get(f"{base_url}/api/v1/health")).status_code == 200:
+                    break
+            except httpx.TransportError:
+                pass
+            await asyncio.sleep(0.01)
     try:
-        yield f"http://127.0.0.1:{port}"
+        yield base_url
     finally:
         server.should_exit = True
         await task
+        await engine.dispose()
