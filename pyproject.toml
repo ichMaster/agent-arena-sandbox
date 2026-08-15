@@ -7,16 +7,17 @@ name = "agent-arena"
 version = "0.1.0"
 description = "AgentArena -- a spectatable arena for LLM-powered agents"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = ["sqlalchemy[asyncio]>=2.0", "aiosqlite"]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "mypy>=1.10"]
+dev = ["pytest>=8", "pytest-asyncio>=0.24", "mypy>=1.10"]
 
 [tool.setuptools]
-packages = ["games"]
+packages = ["games", "server"]
 
 [tool.mypy]
 strict = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+asyncio_mode = "auto"
