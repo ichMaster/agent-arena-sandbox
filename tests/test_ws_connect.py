@@ -72,11 +72,11 @@ def test_malformed_json_yields_error_and_keeps_connection_open() -> None:
             error_event = ws.receive_json()
             assert error_event["event"] == "error"
 
-            # connection is still open: a further action still gets a reply rather
-            # than a dropped socket (submit_move isn't wired until ARENA-086).
-            ws.send_json({"action": "submit_move", "payload": {"move": 0}})
+            # connection is still open: a normal action still round-trips rather than
+            # a dropped socket.
+            ws.send_json({"action": "chat", "payload": {"message": "still here"}})
             reply = ws.receive_json()
-            assert reply["event"] == "error"
+            assert reply["event"] == "chat_message"
 
 
 async def test_disconnect_releases_the_seat() -> None:

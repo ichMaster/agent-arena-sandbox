@@ -130,7 +130,50 @@ async def websocket_endpoint(websocket: WebSocket, match_id: str) -> None:
                     )
                     continue
 
-                # submit_move lands in ARENA-086.
+                if action == "submit_move":
+                    if symbol is None:
+                        await manager.send_to(websocket, make_error("no seat"))
+                        continue
+
+                    current_game = await repo.reconstruct_game(match_id)
+                    turn_before = await repo.current_turn(match_id)
+                    if symbol != turn_before:
+                        await manager.send_to(websocket, make_error("not your turn"))
+                        continue
+
+                    move = payload.get("move")
+                    if not current_game.apply_move(symbol, move):
+                        await manager.send_to(websocket, make_error("invalid move"))
+                        continue
+
+                    await repo.log_move(match_id, symbol, move)
+                    result = current_game.is_game_over()
+                    if result is not None:
+                        await repo.finish_match(match_id, result)
+                    new_turn = await repo.current_turn(match_id)
+
+                    await manager.broadcast(
+                        match_id,
+                        make_event(
+                            "state_update",
+                            {
+                                "board": current_game.get_state()["board"],
+                                "current_turn": new_turn,
+                                "valid_moves": current_game.get_valid_moves(),
+                                "last_move": {"player": symbol, "move": move},
+                            },
+                        ),
+                    )
+                    if result is not None:
+                        await manager.broadcast(
+                            match_id, make_event("game_over", {"result": result})
+                        )
+                        await manager.close_room(match_id)
+                        # close_room already closed (and pruned) this socket too --
+                        # looping back to receive_text() on it would raise.
+                        return
+                    continue
+
                 await manager.send_to(websocket, make_error(f"action not yet supported: {action}"))
         except WebSocketDisconnect:
             pass

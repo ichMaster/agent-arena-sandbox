@@ -71,6 +71,12 @@ class Repository:
     async def rollback(self) -> None:
         await self._session.rollback()
 
+    async def finish_match(self, match_id: str, result: str) -> None:
+        await self._session.execute(
+            update(Match).where(Match.match_id == match_id).values(status="finished", result=result)
+        )
+        await self._session.commit()
+
     async def log_move(self, match_id: str, symbol: str, move: Any) -> None:
         self._session.add(Move(match_id=match_id, player_symbol=symbol, move=move))
         await self._session.commit()
