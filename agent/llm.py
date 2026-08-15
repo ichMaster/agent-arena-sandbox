@@ -16,7 +16,7 @@ T = TypeVar("T", bound=BaseModel)
 
 #: Confirm against the live model list (docs.anthropic.com/en/docs/about-claude/models)
 #: before relying on this in production -- never hardcode a guessed id without checking.
-HAIKU_MODEL_ID = "claude-haiku-4-5"
+HAIKU_MODEL_ID = "claude-haiku-4-5-20251001"
 
 _TOOL_NAME = "respond"
 
