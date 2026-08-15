@@ -169,9 +169,12 @@ def test_estimate_accuracy_is_recorded_as_signed_error() -> None:
         assert row["error"] == row["actual"] - row["estimated_mid"]
 
 
-def test_eta_is_absent_until_a_version_has_finished() -> None:
+def test_eta_is_absent_until_three_issues_are_done() -> None:
+    """Fewer than 3 samples is too noisy to show a number at all (not just a wider
+    one) -- vision §6.2: an ETA computed from too little is worse than no ETA."""
     lines = gen_log.preset("clean-run").splitlines()
-    assert reduce_mod.reduce(lines[:5], NOW).eta is None
+    assert reduce_mod.reduce(lines[:24], NOW).eta is None  # 2 issues closed so far
+    assert reduce_mod.reduce(lines[:31], NOW).eta is not None  # the 3rd just closed
 
 
 def test_eta_carries_its_own_basis() -> None:
@@ -179,6 +182,27 @@ def test_eta_carries_its_own_basis() -> None:
     assert state.eta is not None
     assert state.eta["basis"]["issues_sampled"] > 0
     assert state.eta["low_s"] <= state.eta["high_s"]
+
+
+def test_eta_uses_only_the_last_three_issue_durations() -> None:
+    """Recent velocity, not the whole run's: an all-time mean drags the estimate
+    toward early, slower issues (discovery, first-time setup) long after later ones
+    have settled into a faster, more representative pace."""
+    acc = reduce_mod._Accumulator(NOW)
+    acc.plan = ["v01.01", "v01.02"]
+    acc.decomposed = {"v01.01": [{"id": f"ARENA-{i:03d}", "size": "M"} for i in range(5)]}
+    acc.issue_attempts = {f"ARENA-{i:03d}": 1 for i in range(5)}
+    # Early issues were slow (600s); the three most recent were fast (60s).
+    acc.issue_durations = [600.0, 600.0, 60.0, 60.0, 60.0]
+
+    state = reduce_mod.State()
+    acc._scope_and_eta(state)
+
+    assert state.eta is not None
+    assert state.eta["basis"]["issues_sampled"] == 3
+    expected_mean = 60.0
+    remaining = state.scope["est_low"] - len(acc.issue_attempts)
+    assert state.eta["low_s"] == int(max(0, remaining) * expected_mean)
 
 
 # ── github and idle ──────────────────────────────────────────────────────────

@@ -493,15 +493,22 @@ class _Accumulator:
             state.estimate["accuracy"] = self._estimate_accuracy()
 
         done = sum(1 for issue in self.issue_attempts)
-        if self.released and self.issue_durations:
-            mean_issue = sum(self.issue_durations) / len(self.issue_durations)
+        # Recent velocity, not the whole run's: early issues on a fresh codebase run
+        # slower (discovery, first-time setup) than later ones on an established
+        # pattern, so an all-time mean drags the ETA toward a pessimistic past that
+        # is no longer representative. Three is also the floor for showing an ETA at
+        # all -- one or two samples is too noisy to be worth showing (vision §6.2:
+        # an ETA computed from too little is worse than no ETA).
+        recent_durations = self.issue_durations[-3:]
+        if len(recent_durations) >= 3:
+            mean_issue = sum(recent_durations) / len(recent_durations)
             remaining_low = max(0, state.scope["est_low"] - done)
             remaining_high = max(0, state.scope["est_high"] - done)
             state.eta = {
                 "low_s": int(remaining_low * mean_issue),
                 "high_s": int(remaining_high * mean_issue),
                 "basis": {
-                    "issues_sampled": len(self.issue_durations),
+                    "issues_sampled": len(recent_durations),
                     "undecomposed_versions": len(undecomposed),
                 },
             }
