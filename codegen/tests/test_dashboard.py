@@ -7,6 +7,7 @@ needs the tree it is watching would be deleted by the process it exists to obser
 
 from __future__ import annotations
 
+import copy
 import json
 import os
 import queue
@@ -373,6 +374,35 @@ def wide_state() -> dict[str, Any]:
 def test_no_panel_draws_outside_its_own_viewbox(wide_state: dict[str, Any]) -> None:
     """The overflow that put one chart's series on top of another chart."""
     for panel, r in _panels(_render(wide_state)).items():
+        assert r["rendered"], f"{panel} did not render: {r.get('html')}"
+        assert r["min_y"] >= -0.5, f"{panel} draws above its box at y={r['min_y']}"
+        assert r["max_y"] <= r["height"] + 0.5, (
+            f"{panel} draws below its box: {r['max_y']} > {r['height']}"
+        )
+
+
+def test_velocity_survives_a_version_with_zero_closed_issues(
+    wide_state: dict[str, Any],
+) -> None:
+    """A version whose steps have started but has closed no issues yet -- e.g. still
+    in generate-issues -- gave this chart a NaN mean (0/0). Math.max(...) over the
+    whole row set is NaN for one NaN input, and niceMax's `v || 0` silently floors
+    that to its 60s minimum, so every *real* bar then computes against a collapsed
+    axis and paints far outside the card (SVGs don't clip by default). Reproduces
+    the exact live shape: a running version with a generate-issues step but no
+    execute-issues step at all yet, so it contributes no issues."""
+    state = copy.deepcopy(wide_state)
+    state["plan"] = [*state["plan"], "v04.01"]
+    state["tree"][0]["children"].append({
+        "id": "v04.01", "kind": "version", "status": "running",
+        "start": "2026-08-03T18:00:00.000Z", "end": None, "elapsed_s": 90.0,
+        "children": [
+            {"id": "generate-issues", "kind": "step", "status": "ok",
+             "start": "2026-08-03T18:00:00.000Z", "end": "2026-08-03T18:01:30.000Z",
+             "elapsed_s": 90.0, "children": []},
+        ],
+    })
+    for panel, r in _panels(_render(state)).items():
         assert r["rendered"], f"{panel} did not render: {r.get('html')}"
         assert r["min_y"] >= -0.5, f"{panel} draws above its box at y={r['min_y']}"
         assert r["max_y"] <= r["height"] + 0.5, (

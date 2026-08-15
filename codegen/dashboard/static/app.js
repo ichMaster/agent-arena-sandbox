@@ -295,8 +295,6 @@ function renderTree(){
                 <span class="tname">${i.id} · ${i.size}${i.att>1?` · ${i.att} attempts`:''}</span>
                 <span class="tdur">${mmss(i.dur)}</span></div>`;
           });
-          h+=`<div class="tnode d3 active"><span class="status s-run"><span class="dot"></span></span>
-              <span class="tname">ARENA-016 · M · validating (attempt 2)</span><span class="tdur">1:31</span></div>`;
         }
       });
     }
@@ -355,10 +353,16 @@ function renderBurn(){
 
 /* ── 5 · velocity ───────────────────────────────────────────────────────── */
 function renderVel(){
+  // A version whose steps have started but has closed no issues yet (e.g. still in
+  // generate-issues) has an empty `is` here -- 0/0 is NaN, and Math.max(...NaN...)
+  // is NaN for the *whole* array, which niceMax's `v||0` silently floors to its
+  // 60s minimum. Every real bar then computes against that collapsed axis and
+  // paints far outside the chart's own card (SVGs don't clip by default). Drop
+  // rows with no completed issues before they can poison the shared maxY.
   const rows=V.filter(v=>v.steps).map(v=>{
     const is=ISSUES.filter(i=>i.v===v.id);
     return {id:v.id, mean:is.reduce((a,i)=>a+i.dur,0)/is.length, pts:is.map(i=>i.dur)};
-  });
+  }).filter(r=>r.pts.length>0);
   if(!rows.length){el('c-vel').innerHTML='<p class="note">no issue has finished yet</p>';
     el('tv-vel').innerHTML='';return;}
   const W_=340,H=190,L=52,R=40,T=10,B=40;   // B leaves room for a rotated label
