@@ -1,3 +1,14 @@
+Version 01.03.00 (2026-08-16)
+-----------------------------
+- server/auth.py: opaque token issue/validate, IssuedToken (ARENA-079)
+- server/schemas.py: JoinRequest/CreateMatchResponse/JoinResponse/HealthResponse (ARENA-080)
+- server/match.py: assign_symbol seat rule (spectator-safe, idempotent, X-then-O,
+  match-full) + release_seat (ARENA-081)
+- server/main.py: FastAPI app, GET /health, POST /lobby/match, POST /lobby/join
+  (404 on unknown match, spectator flagged and never auto-seated) (ARENA-082)
+- v01.03 code review: 1 fix-now -- assign_symbol could raise on a genuine concurrent
+  seat-assignment race instead of resolving to X/O; now retries against a fresh read
+
 Version 01.02.00 (2026-08-16)
 -----------------------------
 - server/database.py: async SQLAlchemy engine over sqlite+aiosqlite:///./arena.db,
