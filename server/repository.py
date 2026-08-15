@@ -68,6 +68,9 @@ class Repository:
         )
         await self._session.commit()
 
+    async def rollback(self) -> None:
+        await self._session.rollback()
+
     async def log_move(self, match_id: str, symbol: str, move: Any) -> None:
         self._session.add(Move(match_id=match_id, player_symbol=symbol, move=move))
         await self._session.commit()

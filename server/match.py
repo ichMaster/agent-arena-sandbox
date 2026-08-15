@@ -8,7 +8,14 @@ directly (architecture.md §3: all DB access goes through the Repository).
 
 from __future__ import annotations
 
+from sqlalchemy.exc import IntegrityError
+
 from server.repository import Repository
+
+#: One retry covers exactly one concurrent loser of the UNIQUE(match_id, symbol) race
+#: (architecture.md §10) -- a second collision on the same match/symbol pair, with only
+#: two symbols and a stale read in between, is not a scenario this seat rule expects.
+_MAX_ATTEMPTS = 2
 
 
 async def assign_symbol(repo: Repository, match_id: str, token: str) -> str | None:
@@ -18,6 +25,10 @@ async def assign_symbol(repo: Repository, match_id: str, token: str) -> str | No
     2. already has a symbol -> return it (idempotent reconnect).
     3. two seats already taken -> None (match full).
     4. otherwise assign the first free symbol (X before O) and persist it.
+
+    Two concurrent callers can both read the same free symbol before either commits;
+    the UNIQUE(match_id, symbol) constraint is the backstop (§10), so a collision here
+    is retried against a fresh read rather than left to raise.
     """
     participant = await repo.get_participant(match_id, token)
     if participant is None or participant.is_spectator:
@@ -25,12 +36,19 @@ async def assign_symbol(repo: Repository, match_id: str, token: str) -> str | No
     if participant.symbol is not None:
         return participant.symbol
 
-    taken = await repo.taken_symbols(match_id)
-    for candidate in ("X", "O"):
-        if candidate not in taken:
+    for attempt in range(_MAX_ATTEMPTS):
+        taken = await repo.taken_symbols(match_id)
+        candidate = next((c for c in ("X", "O") if c not in taken), None)
+        if candidate is None:
+            return None  # match full
+        try:
             await repo.set_symbol(match_id, token, candidate)
             return candidate
-    return None  # match full
+        except IntegrityError:
+            await repo.rollback()
+            if attempt == _MAX_ATTEMPTS - 1:
+                raise
+    return None
 
 
 async def release_seat(repo: Repository, match_id: str, token: str) -> None:

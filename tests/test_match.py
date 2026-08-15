@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
+import os
+import tempfile
 from collections.abc import AsyncIterator
 
 import pytest
@@ -82,3 +85,32 @@ async def test_release_seat_frees_symbol_for_reassignment(repo: Repository) -> N
     await repo.add_participant("tok3", "m1", "Carol", is_spectator=False)
     third = await assign_symbol(repo, "m1", "tok3")
     assert third is not None  # the freed symbol is available again
+
+
+async def test_concurrent_assign_symbol_resolves_without_raising() -> None:
+    """Regression for code review #1 (v01.03): two genuinely concurrent joins (two
+    independent sessions, as two real WS connections would each hold, per
+    architecture.md §10) must resolve to distinct X/O seats, not raise IntegrityError."""
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    db_url = f"sqlite+aiosqlite:///{path}"
+    try:
+        engine: AsyncEngine = create_async_engine(db_url)
+        await init_models(bind=engine)
+        session_maker = async_sessionmaker(engine, expire_on_commit=False)
+
+        async with session_maker() as setup_session:
+            setup_repo = Repository(setup_session)
+            await setup_repo.create_match("m1")
+            await setup_repo.add_participant("tok1", "m1", "Alice", is_spectator=False)
+            await setup_repo.add_participant("tok2", "m1", "Bob", is_spectator=False)
+
+        async def join(token: str) -> str | None:
+            async with session_maker() as session:
+                return await assign_symbol(Repository(session), "m1", token)
+
+        results = await asyncio.gather(join("tok1"), join("tok2"))
+        assert set(results) == {"X", "O"}
+        await engine.dispose()
+    finally:
+        os.unlink(path)
