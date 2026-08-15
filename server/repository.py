@@ -52,6 +52,22 @@ class Repository:
         )
         await self._session.commit()
 
+    async def taken_symbols(self, match_id: str) -> set[str]:
+        result = await self._session.execute(
+            select(Participant.symbol).where(
+                Participant.match_id == match_id, Participant.symbol.is_not(None)
+            )
+        )
+        return {symbol for symbol in result.scalars().all() if symbol is not None}
+
+    async def set_symbol(self, match_id: str, token: str, symbol: str) -> None:
+        await self._session.execute(
+            update(Participant)
+            .where(Participant.match_id == match_id, Participant.token == token)
+            .values(symbol=symbol)
+        )
+        await self._session.commit()
+
     async def log_move(self, match_id: str, symbol: str, move: Any) -> None:
         self._session.add(Move(match_id=match_id, player_symbol=symbol, move=move))
         await self._session.commit()
