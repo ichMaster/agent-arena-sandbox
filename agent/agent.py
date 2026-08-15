@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import random
 from dataclasses import dataclass
 from typing import Any
 
@@ -17,6 +18,12 @@ import websockets
 from agent.llm import LLMClient, create_llm_client
 from agent.memory import MemoryWindow
 from agent.profile import AgentProfile
+from agent.prompt import build_prompt
+from agent.schemas import AgentResponse
+
+#: If the model can't produce a legal move in this many tries, fall back to a
+#: random legal one rather than stalling the match (architecture.md §7.1).
+MAX_MOVE_ATTEMPTS = 3
 
 
 @dataclass(frozen=True)
@@ -89,13 +96,39 @@ class AgentSession:
         async for raw in self._ws:
             await self._handle_event(json.loads(raw))
 
+    async def decide(self, board: list[Any], valid_moves: list[Any]) -> AgentResponse:
+        """Prompt -> LLMClient -> validate -> retry -> fallback to a random legal move.
+
+        Never stalls the match: MAX_MOVE_ATTEMPTS exhausted means a legal move is
+        chosen for the model, not that the turn is skipped.
+        """
+        for _attempt in range(MAX_MOVE_ATTEMPTS):
+            prompt = build_prompt(self.memory, board, valid_moves, self.profile)
+            response = await self.llm_client.generate_structured_response(prompt, AgentResponse)
+            if response.move in valid_moves:
+                return response
+        fallback_move = random.choice(valid_moves)
+        return AgentResponse(move=fallback_move, comment="(taking a legal move)")
+
     async def _handle_event(self, envelope: dict[str, Any]) -> None:
         event = envelope.get("event")
         payload = envelope.get("payload") or {}
         if event == "joined":
             self.my_symbol = payload.get("symbol")
             print(f"[{self.profile.name}] joined as {self.my_symbol}", flush=True)
-        # state_update / chat_message / game_over handling lands in ARENA-094/095.
+
+        if event in ("joined", "state_update"):
+            current_turn = payload.get("current_turn")
+            if self.my_symbol is not None and current_turn == self.my_symbol:
+                board = payload.get("board", [])
+                valid_moves = payload.get("valid_moves", [])
+                response = await self.decide(board, valid_moves)
+                print(
+                    f"[{self.profile.name}] move={response.move}: {response.comment}",
+                    flush=True,
+                )
+                # Sending chat + submit_move lands in ARENA-095.
+        # chat_message / game_over handling lands in ARENA-095.
 
 
 async def main(args: AgentArgs) -> None:

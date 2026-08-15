@@ -16,9 +16,30 @@ from collections.abc import AsyncIterator
 import pytest
 import uvicorn
 
+from agent.llm import LLMClient
+from agent.schemas import AgentResponse
+
 _fd, _path = tempfile.mkstemp(suffix=".db", prefix="agent-arena-test-")
 os.close(_fd)
 os.environ.setdefault("ARENA_DB_URL", f"sqlite+aiosqlite:///{_path}")
+
+
+class ScriptedLLMClient(LLMClient):
+    """A fake LLMClient returning each scripted AgentResponse in order -- never a
+    real SDK/network call. The LLM is mocked by default in tests (CLAUDE.md); any
+    AgentSession built for a test that could plausibly act on its turn must use
+    this, never AnthropicHaikuClient, or it silently makes a real API call."""
+
+    def __init__(self, script: list[AgentResponse]) -> None:
+        self._script = list(script)
+        self.calls = 0
+        self.prompts: list[str] = []
+
+    async def generate_structured_response(self, prompt: str, schema: type) -> AgentResponse:  # type: ignore[override]
+        self.prompts.append(prompt)
+        response = self._script[min(self.calls, len(self._script) - 1)]
+        self.calls += 1
+        return response
 
 
 def _free_port() -> int:

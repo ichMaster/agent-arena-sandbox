@@ -11,8 +11,9 @@ import json
 import httpx
 
 from agent.agent import AgentSession, join_match, parse_args
-from agent.llm import AnthropicHaikuClient
 from agent.profile import AgentProfile
+from agent.schemas import AgentResponse
+from tests.conftest import ScriptedLLMClient
 
 
 def test_parse_args_reads_required_and_optional_flags() -> None:
@@ -50,7 +51,7 @@ async def test_agent_session_connects_and_stores_my_symbol(live_server: str) -> 
         name="Aggressor", model_type="haiku", temperature=0.9,
         system_prompt="You are aggressive.", memory_limit=10,
     )
-    llm_client = AnthropicHaikuClient(api_key="unused-in-this-test")
+    llm_client = ScriptedLLMClient([AgentResponse(move=4, comment="taking the center")])
     session = AgentSession(profile, llm_client, live_server, match_id, token)
     await session.connect()
     assert session._ws is not None
