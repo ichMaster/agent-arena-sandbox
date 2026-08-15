@@ -12,6 +12,8 @@ from typing import Any
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from games.interface import GameInterface
+from games.tictactoe import TicTacToe
 from server.models import ChatMessage, Match, Move, Participant
 
 
@@ -57,3 +59,22 @@ class Repository:
             select(Move).where(Move.match_id == match_id).order_by(Move.id)
         )
         return list(result.scalars().all())
+
+    async def reconstruct_game(self, match_id: str) -> GameInterface:
+        """Replay match_id's move log through a fresh TicTacToe (architecture.md §5.1).
+
+        No serialize/deserialize is added to GameInterface -- replay from the empty
+        board is what "live state" means here.
+        """
+        game: GameInterface = TicTacToe()
+        for move in await self._ordered_moves(match_id):
+            game.apply_move(move.player_symbol, move.move)
+        return game
+
+    async def current_turn(self, match_id: str) -> str | None:
+        """"X" on even move count, "O" on odd -- None once the game is over."""
+        game = await self.reconstruct_game(match_id)
+        if game.is_game_over() is not None:
+            return None
+        moves_played = len(await self._ordered_moves(match_id))
+        return "X" if moves_played % 2 == 0 else "O"
