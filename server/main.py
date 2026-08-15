@@ -113,8 +113,24 @@ async def websocket_endpoint(websocket: WebSocket, match_id: str) -> None:
                 if parsed is None:
                     await manager.send_to(websocket, make_error("malformed message"))
                     continue
-                action, _payload = parsed
-                # Handlers land in ARENA-085 (chat) / ARENA-086 (submit_move).
+                action, payload = parsed
+
+                if action == "chat":
+                    message = payload.get("message")
+                    if not isinstance(message, str) or not message:
+                        await manager.send_to(websocket, make_error("chat requires a message"))
+                        continue
+                    await repo.log_chat(match_id, participant.player_name, message)
+                    await manager.broadcast(
+                        match_id,
+                        make_event(
+                            "chat_message",
+                            {"sender": participant.player_name, "message": message},
+                        ),
+                    )
+                    continue
+
+                # submit_move lands in ARENA-086.
                 await manager.send_to(websocket, make_error(f"action not yet supported: {action}"))
         except WebSocketDisconnect:
             pass

@@ -72,9 +72,9 @@ def test_malformed_json_yields_error_and_keeps_connection_open() -> None:
             error_event = ws.receive_json()
             assert error_event["event"] == "error"
 
-            # connection is still open: a further (currently unhandled) action still
-            # gets a reply rather than a dropped socket.
-            ws.send_json({"action": "chat", "payload": {"message": "hi"}})
+            # connection is still open: a further action still gets a reply rather
+            # than a dropped socket (submit_move isn't wired until ARENA-086).
+            ws.send_json({"action": "submit_move", "payload": {"move": 0}})
             reply = ws.receive_json()
             assert reply["event"] == "error"
 
