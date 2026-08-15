@@ -1,3 +1,13 @@
+Version 02.01.00 (2026-08-16)
+-----------------------------
+- agent/schemas.py: AgentResponse{move, comment} (ARENA-087)
+- agent/llm.py: the LLMClient abstract seam + create_llm_client dispatch (ARENA-088)
+- agent/llm.py: AnthropicHaikuClient -- structured output via tool-use, fail-fast on a
+  missing API key, zero paid calls in the default suite (ARENA-089)
+- v02.01 code review: 1 fix-now -- HAIKU_MODEL_ID was not a real Anthropic model id
+  (corrected to claude-haiku-4-5-20251001); invisible to the mocked test suite by
+  design, would only have surfaced on a live run
+
 Version 01.04.00 (2026-08-16)
 -----------------------------
 - server/websockets.py: ConnectionManager (connect/disconnect+seat-release/broadcast
