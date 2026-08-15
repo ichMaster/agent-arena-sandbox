@@ -1,0 +1,10 @@
+Version 01.01.00 (2026-08-16)
+-----------------------------
+- Repo skeleton: pyproject.toml (explicit setuptools packages list, mypy --strict, pytest
+  scoped to tests/), games/ package layout (ARENA-071)
+- GameInterface: the abstract game-plug-in seam, with its contract test (ARENA-072)
+- TicTacToe engine: 9-cell board, 8 winning lines, draw detection, never-raising
+  apply_move (ARENA-073)
+- Exhaustive TicTacToe unit suite: 27 tests covering every winning line, draw, and
+  illegal-move category (ARENA-074)
+- v01.01 code review: no findings
