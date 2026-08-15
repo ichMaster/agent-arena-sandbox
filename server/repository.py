@@ -72,9 +72,14 @@ class Repository:
         return game
 
     async def current_turn(self, match_id: str) -> str | None:
-        """"X" on even move count, "O" on odd -- None once the game is over."""
+        """"X" on even move count, "O" on odd -- None once the game is over.
+
+        Derived from the reconstructed board itself (filled-cell count), not a second,
+        independent query against the raw move log -- log_move does not validate, so a
+        row count can disagree with what reconstruct_game actually replayed.
+        """
         game = await self.reconstruct_game(match_id)
         if game.is_game_over() is not None:
             return None
-        moves_played = len(await self._ordered_moves(match_id))
-        return "X" if moves_played % 2 == 0 else "O"
+        filled = sum(1 for cell in game.get_state()["board"] if cell is not None)
+        return "X" if filled % 2 == 0 else "O"

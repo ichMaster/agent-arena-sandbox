@@ -52,6 +52,24 @@ async def test_current_turn_none_and_result_on_completed_game(repo: Repository) 
     assert await repo.current_turn("m1") is None
 
 
+async def test_current_turn_matches_reconstructed_board_even_with_an_invalid_logged_move(
+    repo: Repository,
+) -> None:
+    """Regression for code review #1 (v01.02): log_move doesn't validate, so a move that
+    fails replay must not throw off current_turn()'s parity relative to what
+    reconstruct_game() actually applied."""
+    await repo.create_match("m1")
+    await repo.log_move("m1", "X", 0)  # legal
+    await repo.log_move("m1", "O", 99)  # illegal -- out of range; log_move stores it anyway
+
+    game = await repo.reconstruct_game("m1")
+    board = game.get_state()["board"]
+    assert board[0] == "X"
+    assert sum(1 for cell in board if cell is not None) == 1  # the illegal move never landed
+
+    assert await repo.current_turn("m1") == "O"  # not "X" -- must agree with the replayed board
+
+
 async def test_current_turn_none_on_draw(repo: Repository) -> None:
     await repo.create_match("m1")
     moves = [
