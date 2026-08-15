@@ -28,6 +28,12 @@ class Repository:
     async def get_match(self, match_id: str) -> Match | None:
         return await self._session.get(Match, match_id)
 
+    async def get_participant(self, match_id: str, token: str) -> Participant | None:
+        participant = await self._session.get(Participant, token)
+        if participant is None or participant.match_id != match_id:
+            return None
+        return participant
+
     async def add_participant(
         self, token: str, match_id: str, name: str, is_spectator: bool
     ) -> None:
