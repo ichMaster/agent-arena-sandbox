@@ -1,3 +1,19 @@
+Version 02.02.00 (2026-08-16)
+-----------------------------
+- agent/profile.py: AgentProfile.load_from_yaml + profiles/aggressive.yml (ARENA-090)
+- agent/memory.py: MemoryWindow -- a shared-eviction-bound rolling buffer of moves +
+  chat (ARENA-091)
+- agent/prompt.py: build_prompt -- persona + memory + pushed board/valid-moves composed
+  into one prompt, no model call (ARENA-092)
+- v02.02 code review: 1 fix-now -- opponent chat was embedded in the prompt with no
+  framing distinguishing it from real instructions (a prompt-injection surface,
+  blast radius capped by server-side move re-validation); now explicitly framed as
+  non-instructional
+- also fixed: bare uvicorn has no real WebSocket implementation -- a live server
+  couldn't accept WS connections at all (invisible to TestClient-based tests since
+  v01.04); now uvicorn[standard], verified against a real server + real websockets
+  client end to end
+
 Version 02.01.00 (2026-08-16)
 -----------------------------
 - agent/schemas.py: AgentResponse{move, comment} (ARENA-087)
