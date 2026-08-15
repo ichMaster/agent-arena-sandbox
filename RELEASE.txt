@@ -1,3 +1,21 @@
+Version 01.04.00 (2026-08-16)
+-----------------------------
+- server/websockets.py: ConnectionManager (connect/disconnect+seat-release/broadcast
+  with dead-socket pruning/send_to/close_room) + the pinned event/action envelopes
+  (ARENA-083)
+- WS endpoint GET /ws/match/{id}?token=: 4001 on bad token, joined on connect, malformed
+  JSON -> error without dropping the connection, cleanup in finally -- hardened against
+  the async-cancellation disconnect path with anyio.CancelScope(shield=True) (ARENA-084)
+- chat action: persist + broadcast chat_message (ARENA-085)
+- submit_move: the full move authority flow -- no-seat/out-of-turn/illegal-move all
+  rejected via error with state unchanged; game_over + close_room on completion
+  (ARENA-086)
+- v01.04 code review: 1 deferred (broadcast write-serialization under concurrent
+  senders -> v05.01); two real bugs (async-cancellation seat leak, close-room loop
+  crash) were found and fixed during implementation, each with a regression test
+- v01 release gate met: two raw WS clients play a full game (win and draw), exchange
+  chat, and reach game_over with the room closed
+
 Version 01.03.00 (2026-08-16)
 -----------------------------
 - server/auth.py: opaque token issue/validate, IssuedToken (ARENA-079)
