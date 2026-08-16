@@ -1,3 +1,21 @@
+Version 04.02.00 (2026-08-16)
+-----------------------------
+- scripts/run_arena.sh (new): one-command agent-vs-agent demo -- creates a
+  match, launches agent 1, waits for its own join confirmation before
+  launching agent 2 (the only real lever for distinct seats -- there is no
+  --symbol flag), prints the Observe link, tails both agents' banter live,
+  cleans up on Ctrl-C
+- Verified live end-to-end three times against a real server, two real
+  agents, and a real Anthropic API key -- a full game played to completion
+  with Aggressor/Sentinel's contrast landing exactly as v04.01 designed;
+  found and fixed three real bugs along the way: the script now prefers
+  .venv/bin/python3, backgrounds tail -f so the shutdown trap fires
+  promptly on a non-interactive kill (it previously hung forever), and
+  guards against double-running the cleanup trap
+- v04.02 code review: 1 fix-now -- a trailing slash in $SERVER_URL produced
+  a false "server not reachable" error; now normalized on read
+- Phase v04 (Agent-vs-Agent Orchestration) complete -- the v04 release gate
+
 Version 04.01.00 (2026-08-16)
 -----------------------------
 - profiles/aggressive.yml: refined Aggressor's system_prompt to needle a
