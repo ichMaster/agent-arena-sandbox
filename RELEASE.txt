@@ -1,3 +1,23 @@
+Version 03.02.00 (2026-08-16)
+-----------------------------
+- web/app.js: renderBoard -- nine cells created once, marks + playability
+  driven by isGameActive && mySymbol !== null && currentTurn === mySymbol
+  && validMoves.includes(i); Observers never playable (ARENA-100)
+- web/app.js: handleCellClick -> submit_move (guarded, no optimistic update);
+  game_over freezes every cell, sets the status label, and highlights the
+  winning line for an X/O result (computed client-side, presentational
+  only -- the server payload carries no cell info); error events surface
+  visibly without closing the connection (ARENA-101)
+- web/app.js: player cards (initPlayerCards is null-safe for Observers,
+  falling back to index.html's own defaults) + active-turn highlight;
+  resetBoardAndCards() runs before a same-tab re-host's new WebSocket even
+  opens, so no stale board/highlight/error state survives into the next
+  match (ARENA-102)
+- v03.02 code review: clean pass, no findings -- traced the win-line/
+  state_update ordering guarantee and the double-submit race against the
+  real server code, cross-checked every DOM id app.js looks up against
+  index.html
+
 Version 03.01.00 (2026-08-16)
 -----------------------------
 - server/main.py: mounted /ui with a scoped Cache-Control: no-store middleware
