@@ -98,3 +98,21 @@ def test_no_innerhtml_write_of_server_provided_text() -> None:
     assert "innerHTML" not in body
     assert "who.textContent = sender" in body
     assert "bubble.textContent = text" in body
+
+
+def test_default_player_name_is_not_a_shared_literal() -> None:
+    """Code review #1, v03.03: a fixed default (e.g. plain "Player") lets two
+    participants who both accept it collide -- chat_message.sender is the raw
+    player_name, so renderChat's self/other derivation would then render each
+    side's own messages as the other's. The default must differ per call."""
+    js = _app_js()
+    body = _function_body(js, "function defaultPlayerName()")
+    assert "Math.random()" in body
+
+
+def test_prompt_player_name_falls_back_to_the_generated_default() -> None:
+    js = _app_js()
+    body = _function_body(js, "function promptPlayerName()")
+    assert "defaultPlayerName()" in body
+    assert "window.prompt(" in body
+    assert "|| suggested" in body

@@ -39,10 +39,14 @@ def test_route_event_is_exposed() -> None:
 
 def test_match_id_is_never_truncated() -> None:
     js = _app_js()
-    # No slicing/substring/ellipsis helper is ever applied on the way to display.
-    assert ".slice(" not in js
-    assert ".substring(" not in js
-    assert "…" not in js.split("setMatchIdDisplay")[1].split("}")[0]
+    # No slicing/substring/ellipsis helper is ever applied on the way to
+    # display -- scoped to setMatchIdDisplay's own body, not the whole file:
+    # unrelated code (e.g. a random-suffix generator) may legitimately use
+    # .slice() for something that has nothing to do with the match id.
+    set_match_id_display = js.split("setMatchIdDisplay")[1].split("}")[0]
+    assert ".slice(" not in set_match_id_display
+    assert ".substring(" not in set_match_id_display
+    assert "…" not in set_match_id_display
 
 
 def test_host_join_observe_set_spectator_correctly() -> None:

@@ -279,8 +279,20 @@
     return body.token;
   }
 
+  // A shared literal default (e.g. plain "Player") would let two participants
+  // who both accept it without typing -- the lowest-effort, most likely path
+  // -- collide: chat_message.sender is the raw player_name (code review #1,
+  // v03.03), so renderChat's self/other derivation would then render each
+  // side's own messages as the other's. A random per-prompt suffix doesn't
+  // make a deliberately-typed collision impossible, but closes the
+  // guaranteed one from the default itself.
+  function defaultPlayerName() {
+    return `Player-${Math.random().toString(36).slice(2, 6)}`;
+  }
+
   function promptPlayerName() {
-    return window.prompt("Your name?", "Player") || "Player";
+    const suggested = defaultPlayerName();
+    return window.prompt("Your name?", suggested) || suggested;
   }
 
   function promptMatchId() {
