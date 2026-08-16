@@ -19,6 +19,10 @@
     myPlayerName: null,
     mySymbol: null,
     isGameActive: true,
+    // The last board renderBoard() drew -- game_over's payload carries only
+    // `result`, no board (architecture.md §6.2), so this is what lets the
+    // win-line highlight be computed client-side (presentational only).
+    lastBoard: null,
   };
 
   // ---- DOM handles ----
@@ -34,6 +38,7 @@
   const chatInput = document.getElementById("chat-input");
   const chatSend = document.getElementById("chat-send");
   const boardEl = document.getElementById("board");
+  const statusError = document.getElementById("status-error");
 
   // ---- Connection status ----
 
@@ -74,13 +79,21 @@
     return cellButtons;
   }
 
-  // Real submit_move wiring lands in ARENA-101; this stub exists so the cells'
-  // click listeners (bound once, at creation time, above) have something to call.
+  // submit_move guarded against every non-actable state (web_ui_specification.md
+  // §6.3): a stale/late click after the socket closes, the game ends, or the
+  // cell becomes disabled is a silent no-op, never a send or a thrown error. No
+  // optimistic update -- the board only ever changes from a real state_update.
   function handleCellClick(index) {
-    void index;
+    if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return;
+    if (!state.isGameActive) return;
+    const cells = ensureCells();
+    const cell = cells[index];
+    if (!cell || cell.disabled) return;
+    state.ws.send(JSON.stringify({ action: "submit_move", payload: { move: index } }));
   }
 
   function renderBoard(board, validMoves, currentTurn, mySymbol, isGameActive) {
+    state.lastBoard = board;
     const cells = ensureCells();
     // Observers (mySymbol === null) are never playable, regardless of currentTurn
     // (web_ui_specification.md §5) -- mySymbol !== null makes that fall out of
@@ -99,6 +112,28 @@
         cell.className = playable ? "cell empty playable" : "cell empty disabled";
         cell.disabled = !playable;
       }
+    }
+  }
+
+  const WIN_LINES = [
+    [0, 1, 2], [3, 4, 5], [6, 7, 8],
+    [0, 3, 6], [1, 4, 7], [2, 5, 8],
+    [0, 4, 8], [2, 4, 6],
+  ];
+
+  // Presentational only: the server never names the winning cells (game_over's
+  // payload is `{result}` only, architecture.md §6.2) -- this is derived from
+  // the board the server already pushed, not an independent legality decision.
+  function computeWinningLine(board, result) {
+    for (const line of WIN_LINES) {
+      if (line.every((i) => board[i] === result)) return line;
+    }
+    return null;
+  }
+
+  function freezeBoard() {
+    for (const cell of ensureCells()) {
+      cell.disabled = true;
     }
   }
 
@@ -225,9 +260,22 @@
       case "game_over":
         state.isGameActive = false;
         turnBanner.textContent = `Game Over — ${payload.result}`;
+        statusLabel.textContent = `Game Over — ${payload.result}`;
+        freezeBoard();
+        if (payload.result === "X" || payload.result === "O") {
+          const line = computeWinningLine(state.lastBoard, payload.result);
+          if (line) {
+            const cells = ensureCells();
+            for (const i of line) cells[i].classList.add("win");
+          }
+        }
         break;
       case "error":
         console.error("Agent Arena server error:", payload.detail);
+        // Surfaced, connection kept open (web_ui_specification.md §6.1) -- an
+        // error event is never itself a reason to disconnect.
+        statusError.textContent = payload.detail;
+        statusError.hidden = false;
         break;
       default:
         console.warn("Agent Arena: unknown event", event);

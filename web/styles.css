@@ -96,6 +96,7 @@ body {
   .dot.connected { animation: none; }
 }
 .match-id { color: var(--text); font-variant-numeric: tabular-nums; word-break: break-all; }
+#status-error { color: var(--o); font-weight: 600; }
 
 .lobby { display: flex; gap: 10px; margin-left: auto; flex-wrap: wrap; }
 .btn {
