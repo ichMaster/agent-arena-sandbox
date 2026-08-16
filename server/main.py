@@ -3,14 +3,18 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Annotated
 from uuid import uuid4
 
 import anyio
 from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.requests import Request
+from starlette.responses import Response
 
 from server.auth import issue_token
 from server.database import async_session_maker, init_models
@@ -18,6 +22,9 @@ from server.match import assign_symbol
 from server.repository import Repository
 from server.schemas import CreateMatchResponse, HealthResponse, JoinRequest, JoinResponse
 from server.websockets import ConnectionManager, make_error, make_event, parse_action
+
+#: web/ sits next to server/ at the repo root, regardless of the process's CWD.
+WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 
 
 @asynccontextmanager
@@ -30,6 +37,22 @@ app = FastAPI(lifespan=lifespan)
 
 #: The set of live sockets, in-memory only (architecture.md §5.3, §10).
 manager = ConnectionManager()
+
+
+@app.middleware("http")
+async def no_store_for_ui(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    """/ui/* is never cached -- an edit to web/ must never be masked by a stale
+    browser copy (architecture.md §3, §8). Scoped to /ui only: the REST lobby
+    endpoints keep their normal (unset) caching."""
+    response = await call_next(request)
+    if request.url.path.startswith("/ui"):
+        response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+app.mount("/ui", StaticFiles(directory=WEB_DIR, html=True), name="ui")
 
 
 async def get_db_session() -> AsyncIterator[AsyncSession]:
