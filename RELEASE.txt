@@ -1,3 +1,22 @@
+Version 05.03.00 (2026-08-16)
+-----------------------------
+- README.md (new): setup, all three run modes with exact commands, a WS
+  protocol summary table, testing instructions, links to
+  spec/game_specification.md and spec/architecture.md (ARENA-111)
+- ARENA-112: genuinely simulated a clean checkout (fresh venv, pip install
+  -e ".[dev]" from scratch) and ran every command README documents against
+  it -- pytest, mypy, a real server start with /ui returning
+  Cache-Control: no-store, and a scripts/run_arena.sh smoke test; zero
+  drift found
+- tests/test_ui_shell.py: automated the previously-manual checks that
+  web/styles.css's design tokens match spec/ui_prototype.html exactly and
+  that every DOM id web/app.js looks up exists in web/index.html
+- tests/test_readme.py (new): 7 content-drift guards locking in README's
+  structure
+- v05.03 code review: clean pass, no findings
+- Suite now 238 tests, all green, mypy --strict clean, zero paid API calls
+- v05 release gate reached: the MVP is complete (roadmap.md)
+
 Version 05.02.00 (2026-08-16)
 -----------------------------
 - tests/test_agent_vs_agent.py (new): two real AgentSessions, each
