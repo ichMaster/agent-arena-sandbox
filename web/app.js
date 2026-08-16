@@ -54,8 +54,18 @@
   function setConnected(connected) {
     statusDot.classList.toggle("connected", connected);
     statusLabel.textContent = connected ? "Connected" : "Disconnected";
-    chatInput.disabled = !connected;
-    chatSend.disabled = !connected;
+    updateChatEnabled();
+  }
+
+  // Gated on role as well as connection state: an Observer (mySymbol === null)
+  // never gets to post, even once the socket is OPEN -- posting isn't a
+  // Player-only *board* action like submit_move, but web_ui_specification.md
+  // §4.4/§5 make chat input Observer-disabled just the same, "in the MVP".
+  function updateChatEnabled() {
+    const open = state.ws !== null && state.ws.readyState === WebSocket.OPEN;
+    const enabled = open && state.mySymbol !== null;
+    chatInput.disabled = !enabled;
+    chatSend.disabled = !enabled;
   }
 
   // The full match id, never truncated -- it's the exact string a user copies
@@ -183,6 +193,10 @@
   // for the same principle applied to the WebSocket itself).
   function resetBoardAndCards() {
     state.lastBoard = null;
+    // A prior match's mySymbol must not leak into the new connection's chat
+    // gate (updateChatEnabled) during the window before the new match's own
+    // joined confirms the real role.
+    state.mySymbol = null;
     for (const cell of ensureCells()) {
       cell.textContent = "";
       cell.className = "cell empty disabled";
@@ -194,6 +208,7 @@
     turnBanner.textContent = "Not connected";
     messagesEl.innerHTML = "";
     chatCountEl.textContent = "";
+    updateChatEnabled();
   }
 
   // ---- Chat (web_ui_specification.md §4.4) ----
@@ -354,6 +369,7 @@
         turnBanner.textContent =
           state.mySymbol === null ? "Observing" : `You are ${state.mySymbol}`;
         chatCountEl.textContent = state.mySymbol === null ? "Observing" : "Playing";
+        updateChatEnabled();
         initPlayerCards(state.mySymbol);
         updateActiveCard(payload.current_turn);
         renderBoard(
