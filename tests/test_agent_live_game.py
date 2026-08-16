@@ -1,6 +1,13 @@
-"""agent/agent.py -- chat + submit_move, memory recording, game_over (ARENA-095).
+"""agent/agent.py -- full end-to-end integration suite (ARENA-095, ARENA-096).
 
-Against a real server. LLM is a scripted fake throughout -- zero network calls.
+Against a real server (an in-process uvicorn.Server on a random free port, via the
+`live_server` fixture -- the agent imports nothing from server/ and talks only over
+HTTP/WS, so it needs a real listening socket, not TestClient's in-process ASGI
+transport). The LLMClient seam is `ScriptedLLMClient` throughout: every response is
+taken from an in-memory script, so this suite makes zero network calls to Anthropic
+-- no real `AnthropicHaikuClient` is ever constructed here. A live run against the
+real Haiku API remains available (`python agent/agent.py --profile ...` with
+ANTHROPIC_API_KEY set) but is opt-in and deliberately not part of this suite.
 
 Every scenario plays a full game to natural completion (the server closes the room,
 the client's async iterator ends on its own) rather than cancelling the agent's task
@@ -19,7 +26,7 @@ import json
 import httpx
 import websockets
 
-from agent.agent import AgentSession, join_match
+from agent.agent import MAX_MOVE_ATTEMPTS, AgentSession, join_match
 from agent.profile import AgentProfile
 from agent.schemas import AgentResponse
 from tests.conftest import ScriptedLLMClient
@@ -125,3 +132,67 @@ async def test_full_game_chat_ordering_memory_and_clean_exit(live_server: str) -
     assert ("move", "X", 0) in events
     assert ("chat", "Opponent", "nice try") in events
     assert ("move", "O", 3) in events
+
+
+async def _drive_opponent_to_game_over(ws: websockets.ClientConnection) -> None:
+    """A minimal O bot: on its own turn, takes the first cell valid_moves offers.
+    Never asserts on board layout -- the agent's every move this test drives is a
+    random legal fallback (ARENA-094's retry-then-fallback path), so no exact cell
+    is predictable. Only that the game terminates, which tic-tac-toe always does
+    within 9 moves regardless of which legal cells either side picks.
+    """
+    while True:
+        envelope = json.loads(await asyncio.wait_for(ws.recv(), timeout=5))
+        if envelope["event"] == "game_over":
+            return
+        if envelope["event"] in ("joined", "state_update"):
+            payload = envelope["payload"]
+            if payload.get("current_turn") == "O":
+                move = payload["valid_moves"][0]
+                await ws.send(json.dumps({"action": "submit_move", "payload": {"move": move}}))
+
+
+async def test_illegal_move_retries_then_falls_back_in_a_live_game(live_server: str) -> None:
+    """ARENA-094's retry-then-fallback path (decide()), exercised end to end against
+    a real server rather than only in isolation: the script never returns a legal
+    move, so every one of the agent's turns exhausts MAX_MOVE_ATTEMPTS and falls
+    back to a random legal cell -- proving the agent never stalls the match even
+    when the model hallucinates every time.
+    """
+    async with httpx.AsyncClient() as client:
+        match_id = (await client.post(f"{live_server}/api/v1/lobby/match")).json()["match_id"]
+        agent_token = await join_match(live_server, match_id, "Aggressor", client)
+        opp_token = await join_match(live_server, match_id, "Opponent", client)
+
+    illegal = AgentResponse(move=99, comment="oops")
+    llm = ScriptedLLMClient([illegal])  # every call returns this -- always illegal
+    session = AgentSession(_persona(), llm, live_server, match_id, agent_token)
+    await _claim_seat_first(session)
+
+    async with websockets.connect(
+        f"{live_server.replace('http', 'ws')}/ws/match/{match_id}?token={opp_token}"
+    ) as opp_ws:
+        opp_joined = json.loads(await opp_ws.recv())
+        assert opp_joined["payload"]["symbol"] == "O"
+
+        run_task = asyncio.create_task(_drive_events(session))
+        await _drive_opponent_to_game_over(opp_ws)
+
+    await asyncio.wait_for(run_task, timeout=5)
+    assert run_task.exception() is None
+
+    # MAX_MOVE_ATTEMPTS illegal responses were burned on every one of the agent's
+    # turns -- the retry loop genuinely ran to exhaustion, not just to a fallback.
+    assert llm.calls >= MAX_MOVE_ATTEMPTS
+    assert llm.calls % MAX_MOVE_ATTEMPTS == 0
+
+    # Every one of the agent's own moves landed via the fallback path, never a
+    # move the (always-illegal) script itself proposed.
+    fallback_chats = [
+        e for e in session.memory.events()
+        if e.kind == "chat" and e.sender == "Aggressor" and e.content == "(taking a legal move)"
+    ]
+    assert fallback_chats
+    move_events = [e for e in session.memory.events() if e.kind == "move" and e.sender == "X"]
+    assert move_events
+    assert all(0 <= e.content <= 8 for e in move_events)
