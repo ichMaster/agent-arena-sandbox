@@ -33,6 +33,26 @@ def test_script_is_valid_bash() -> None:
     assert result.returncode == 0, result.stderr
 
 
+def test_trailing_slash_is_stripped_from_server_url() -> None:
+    """Code review #1, v04.02: a URL copied from a browser address bar often
+    has a trailing slash; left in place, the health check's URL carries a
+    double slash and falsely reports the server unreachable. Runs the
+    script's actual normalization line in a real bash subprocess -- not a
+    static string check -- to prove the runtime behavior, not just its
+    presence in the source."""
+    normalization_line = next(
+        line for line in _script().splitlines() if line.strip() == 'SERVER_URL="${SERVER_URL%/}"'
+    )
+    result = subprocess.run(
+        ["bash", "-c", f'SERVER_URL="http://127.0.0.1:8000/"; {normalization_line}; echo "$SERVER_URL"'],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode == 0
+    assert result.stdout.strip() == "http://127.0.0.1:8000"
+
+
 def test_references_both_real_profiles() -> None:
     text = _script()
     assert (SCRIPT.parent.parent / "profiles" / "aggressive.yml").is_file()

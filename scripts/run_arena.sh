@@ -30,6 +30,10 @@ else
 fi
 
 SERVER_URL="${SERVER_URL:-http://127.0.0.1:8000}"
+# Strip a trailing slash once -- a URL copied from a browser address bar
+# often has one, and left in place every URL built from it below (starting
+# with the health check) would carry a double slash and 404 (code review #1).
+SERVER_URL="${SERVER_URL%/}"
 PROFILE_1="${1:-profiles/aggressive.yml}"
 PROFILE_2="${2:-profiles/cautious.yml}"
 POLL_INTERVAL_S=0.2
