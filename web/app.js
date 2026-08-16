@@ -45,6 +45,9 @@
   const playerOCard = document.getElementById("player-o");
   const playerOName = document.getElementById("player-o-name");
   const playerORole = document.getElementById("player-o-role");
+  const messagesEl = document.getElementById("messages");
+  const chatCountEl = document.getElementById("chat-count");
+  const chatForm = document.getElementById("chat-form");
 
   // ---- Connection status ----
 
@@ -189,7 +192,59 @@
     updateActiveCard(null);
     statusError.hidden = true;
     turnBanner.textContent = "Not connected";
+    messagesEl.innerHTML = "";
+    chatCountEl.textContent = "";
   }
+
+  // ---- Chat (web_ui_specification.md §4.4) ----
+
+  function appendMessage(kind, sender, text) {
+    const msg = document.createElement("div");
+    msg.className = `msg ${kind}`;
+    if (sender !== null) {
+      const who = document.createElement("p");
+      who.className = "who";
+      who.textContent = sender;
+      msg.appendChild(who);
+    }
+    const bubble = document.createElement("div");
+    bubble.className = "bubble";
+    bubble.textContent = text;
+    msg.appendChild(bubble);
+    messagesEl.appendChild(msg);
+    // Auto-scroll to the newest message (web_ui_specification.md §4.4).
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  // Self vs other is derived by comparing sender to state.myPlayerName -- the
+  // real, tested contract (server/main.py broadcasts participant.player_name
+  // as chat_message.sender, never a seat symbol; see this phase's
+  // reconciliation note correcting web_ui_specification.md §4.4).
+  function renderChat(sender, message) {
+    const kind = sender === state.myPlayerName ? "self" : "other";
+    appendMessage(kind, sender, message);
+  }
+
+  function renderSystemNotice(text) {
+    appendMessage("system", null, text);
+  }
+
+  // Guarded the same way handleCellClick is (web_ui_specification.md §6.3): a
+  // closed socket or an empty/whitespace-only message is a silent no-op. No
+  // optimistic render -- the sender sees their own message via the server's
+  // broadcast echo, same non-optimistic principle as the board.
+  function sendChat(rawMessage) {
+    if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return;
+    const message = rawMessage.trim();
+    if (!message) return;
+    state.ws.send(JSON.stringify({ action: "chat", payload: { message } }));
+  }
+
+  chatForm.addEventListener("submit", (ev) => {
+    ev.preventDefault();
+    sendChat(chatInput.value);
+    chatInput.value = "";
+  });
 
   // ---- Lobby REST calls ----
 
@@ -298,12 +353,14 @@
         state.mySymbol = payload.symbol;
         turnBanner.textContent =
           state.mySymbol === null ? "Observing" : `You are ${state.mySymbol}`;
+        chatCountEl.textContent = state.mySymbol === null ? "Observing" : "Playing";
         initPlayerCards(state.mySymbol);
         updateActiveCard(payload.current_turn);
         renderBoard(
           payload.board, payload.valid_moves, payload.current_turn,
           state.mySymbol, state.isGameActive
         );
+        renderSystemNotice("Match started");
         break;
       case "state_update":
         updateActiveCard(payload.current_turn);
@@ -313,7 +370,7 @@
         );
         break;
       case "chat_message":
-        // Chat bubble rendering lands in v03.03.
+        renderChat(payload.sender, payload.message);
         break;
       case "game_over":
         state.isGameActive = false;
@@ -330,6 +387,7 @@
             for (const i of line) cells[i].classList.add("win");
           }
         }
+        renderSystemNotice(`Game over — ${payload.result}`);
         break;
       case "error":
         console.error("Agent Arena server error:", payload.detail);
