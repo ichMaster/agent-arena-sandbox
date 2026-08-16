@@ -85,6 +85,14 @@
   }
 
   function connect(matchId, token, playerName) {
+    // Re-hosting/joining in the same tab (web_ui_specification.md §7) must not
+    // leak the previous connection: an abandoned socket the client never closes
+    // leaves its server-side seat held forever (websocket_endpoint's cleanup
+    // only runs once the socket actually closes).
+    if (state.ws) {
+      state.ws.close();
+    }
+
     state.currentMatchId = matchId;
     state.myToken = token;
     state.myPlayerName = playerName;
@@ -97,10 +105,14 @@
     const ws = new WebSocket(wsUrl(matchId, token));
     state.ws = ws;
 
-    ws.addEventListener("open", () => setConnected(true));
-    ws.addEventListener("close", () => setConnected(false));
-    ws.addEventListener("error", () => setConnected(false));
+    // Closing the old socket above fires its own "close" event asynchronously --
+    // without this guard, that stale event could arrive after the new socket's
+    // "open" and incorrectly flip the status back to "Disconnected".
+    ws.addEventListener("open", () => { if (state.ws === ws) setConnected(true); });
+    ws.addEventListener("close", () => { if (state.ws === ws) setConnected(false); });
+    ws.addEventListener("error", () => { if (state.ws === ws) setConnected(false); });
     ws.addEventListener("message", (ev) => {
+      if (state.ws !== ws) return;
       const envelope = JSON.parse(ev.data);
       routeEvent(envelope);
     });

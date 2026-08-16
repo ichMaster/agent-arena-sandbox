@@ -61,6 +61,34 @@ def test_served_app_js_matches_the_file_on_disk() -> None:
     assert served == _app_js()
 
 
+def test_connect_closes_a_prior_socket_before_opening_a_new_one() -> None:
+    """Re-hosting/joining in the same tab (web_ui_specification.md §7) must not
+    leak the previous WebSocket -- an abandoned socket the client never closes
+    leaves its server-side seat held forever (code review #1, v03.01)."""
+    js = _app_js()
+    connect_body = js.split("function connect(matchId, token, playerName)")[1].split(
+        "\n  function "
+    )[0]
+
+    close_index = connect_body.find("state.ws.close()")
+    new_ws_index = connect_body.find("new WebSocket(")
+    assert close_index != -1, "connect() never closes an existing state.ws"
+    assert close_index < new_ws_index, "the prior socket must be closed before the new one opens"
+
+
+def test_connect_guards_handlers_against_a_stale_socket() -> None:
+    """Closing the old socket fires its own close event asynchronously -- every
+    handler on the new socket must check it's still the active one, or a stale
+    event from the old connection can stomp state set by the new one."""
+    js = _app_js()
+    connect_body = js.split("function connect(matchId, token, playerName)")[1].split(
+        "\n  function "
+    )[0]
+    for handler in ("open", "close", "error", "message"):
+        handler_src = connect_body.split(f'addEventListener("{handler}"')[1].split(");")[0]
+        assert "state.ws" in handler_src and "ws" in handler_src
+
+
 async def test_host_sequence_end_to_end_against_a_real_server(live_server: str) -> None:
     """Reproduces exactly what app.js's host() does: POST /lobby/match, POST
     /lobby/join {spectator:false}, then open the WS and expect `joined` first."""
