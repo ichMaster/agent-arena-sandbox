@@ -1,3 +1,12 @@
+Version 04.01.00 (2026-08-16)
+-----------------------------
+- profiles/aggressive.yml: refined Aggressor's system_prompt to needle a
+  cautious opponent by name -- tuned for contrast, not standalone flavor
+- profiles/cautious.yml (new): Sentinel -- temperature 0.4 (vs Aggressor's
+  0.9), a wary, blocking play style with dry, understated banter, a real
+  tonal + stylistic contrast when watched head-to-head
+- v04.01 code review: clean pass, no findings
+
 Version 03.03.00 (2026-08-16)
 -----------------------------
 - web/app.js: chat panel -- post (guarded, non-optimistic), render, self/other
