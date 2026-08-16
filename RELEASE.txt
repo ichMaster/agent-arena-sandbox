@@ -1,3 +1,19 @@
+Version 03.01.00 (2026-08-16)
+-----------------------------
+- server/main.py: mounted /ui with a scoped Cache-Control: no-store middleware
+  (ARENA-097)
+- web/index.html + styles.css: the static arena shell -- app bar, stage, chat
+  panel, dark glass aesthetic, responsive down to a single column, adapted
+  from spec/ui_prototype.html (ARENA-098)
+- web/app.js: Host/Join/Observe wired to the REST lobby + one WebSocket each,
+  a live connection-status indicator, the full (never-truncated) match id
+  display, and a routeEvent dispatcher covering all five WS events -- board
+  and chat rendering land in v03.02/v03.03 (ARENA-099)
+- v03.01 code review: 1 fix-now -- connect() never closed a prior WebSocket
+  before opening a new one, so re-hosting/joining in the same tab leaked the
+  old connection and its server-side seat forever; now closes the old socket
+  first and guards all handlers against a stale connection
+
 Version 02.03.00 (2026-08-16)
 -----------------------------
 - agent/agent.py: CLI args, join_match, AgentSession + real WS connect (ARENA-093)
