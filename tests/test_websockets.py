@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import AsyncIterator
 
@@ -35,6 +36,26 @@ class FakeWebSocket:
     async def close(self, code: int = 1000) -> None:
         self.closed = True
         self.close_code = code
+
+
+class ExclusiveWebSocket:
+    """Records whether any send_text() call ever started while another was
+    still in-flight -- proves per-socket serialization (code review #1,
+    v01.04), not just that concurrent calls eventually all complete."""
+
+    def __init__(self) -> None:
+        self.busy = False
+        self.interleaved = False
+
+    async def send_text(self, data: str) -> None:
+        if self.busy:
+            self.interleaved = True
+        self.busy = True
+        await asyncio.sleep(0.01)  # yield control -- gives a concurrent call a chance to race in
+        self.busy = False
+
+    async def close(self, code: int = 1000) -> None:
+        pass
 
 
 # ---- Contract: pinned event/action shapes (architecture.md §6.2) ----------------------
@@ -161,3 +182,74 @@ async def test_close_room_closes_every_socket() -> None:
     assert ws1.closed
     assert ws2.closed
     assert "m1" not in manager._connections
+
+
+# ---- Per-socket write serialization (code review #1, v01.04) --------------------------
+
+
+async def test_two_concurrent_broadcasts_never_interleave_on_the_same_socket() -> None:
+    """The exact failure scenario the deferred finding named: two different
+    connections' tasks both trigger a broadcast that reaches the same
+    recipient socket at nearly the same moment."""
+    manager = ConnectionManager()
+    ws = ExclusiveWebSocket()
+    await manager.connect("m1", ws, "tok1")
+
+    await asyncio.gather(
+        manager.broadcast("m1", make_event("chat_message", {"sender": "X", "message": "a"})),
+        manager.broadcast("m1", make_event("chat_message", {"sender": "O", "message": "b"})),
+    )
+
+    assert not ws.interleaved
+
+
+async def test_two_concurrent_send_to_calls_never_interleave_on_the_same_socket() -> None:
+    manager = ConnectionManager()
+    ws = ExclusiveWebSocket()
+    await manager.connect("m1", ws, "tok1")
+
+    await asyncio.gather(
+        manager.send_to(ws, make_event("error", {"detail": "one"})),
+        manager.send_to(ws, make_event("error", {"detail": "two"})),
+        manager.send_to(ws, make_event("error", {"detail": "three"})),
+    )
+
+    assert not ws.interleaved
+
+
+async def test_send_to_is_serialized_even_before_connect_registers_the_socket() -> None:
+    """send_to() is called for `joined` before connect() registers the socket
+    (the v03.01 ordering fix) -- the lock must exist for that case too, not
+    only for sockets connect() has already seen."""
+    manager = ConnectionManager()
+    ws = ExclusiveWebSocket()
+
+    await asyncio.gather(
+        manager.send_to(ws, make_event("joined", {"symbol": "X"})),
+        manager.send_to(ws, make_event("error", {"detail": "stray"})),
+    )
+
+    assert not ws.interleaved
+
+
+async def test_lock_is_cleaned_up_on_disconnect(repo: Repository) -> None:
+    await repo.create_match("m1")
+    await repo.add_participant("tok1", "m1", "Alice", is_spectator=False)
+
+    manager = ConnectionManager()
+    ws = FakeWebSocket()
+    await manager.connect("m1", ws, "tok1")
+    assert ws in manager._locks
+
+    await manager.disconnect("m1", ws, repo)
+    assert ws not in manager._locks
+
+
+async def test_lock_is_cleaned_up_on_prune() -> None:
+    manager = ConnectionManager()
+    dead = FakeWebSocket(fail=True)
+    await manager.connect("m1", dead, "tok1")
+    assert dead in manager._locks
+
+    await manager.broadcast("m1", make_event("chat_message", {"sender": "X", "message": "hi"}))
+    assert dead not in manager._locks
