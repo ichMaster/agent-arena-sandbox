@@ -8,9 +8,11 @@ it through the real WS endpoint end to end, not just the DB primitives.
 
 from __future__ import annotations
 
+import asyncio
 import json
 
 import httpx
+import pytest
 import websockets
 
 from server.database import async_session_maker
@@ -36,12 +38,20 @@ async def test_a_new_connection_with_the_same_token_reclaims_the_released_seat(
     assert first_symbol in ("X", "O")
 
     # The disconnect above was a clean WS close -- confirm the seat was
-    # actually released before reconnecting (not just assuming it).
-    async with async_session_maker() as session:
-        repo = Repository(session)
-        participant = await repo.get_participant(match_id, token)
-        assert participant is not None
-        assert participant.symbol is None
+    # actually released before reconnecting. Poll briefly rather than
+    # asserting immediately: the client-side closing handshake completing
+    # doesn't guarantee the server's own cleanup task has finished its DB
+    # write yet (code review #1, v05.01).
+    for _ in range(50):
+        async with async_session_maker() as session:
+            repo = Repository(session)
+            participant = await repo.get_participant(match_id, token)
+            assert participant is not None
+            if participant.symbol is None:
+                break
+        await asyncio.sleep(0.02)
+    else:
+        pytest.fail("seat was not released within the timeout")
 
     async with websockets.connect(ws_url) as ws2:
         second_joined = json.loads(await ws2.recv())
