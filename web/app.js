@@ -39,6 +39,12 @@
   const chatSend = document.getElementById("chat-send");
   const boardEl = document.getElementById("board");
   const statusError = document.getElementById("status-error");
+  const playerXCard = document.getElementById("player-x");
+  const playerXName = document.getElementById("player-x-name");
+  const playerXRole = document.getElementById("player-x-role");
+  const playerOCard = document.getElementById("player-o");
+  const playerOName = document.getElementById("player-o-name");
+  const playerORole = document.getElementById("player-o-role");
 
   // ---- Connection status ----
 
@@ -137,6 +143,54 @@
     }
   }
 
+  // ---- Player cards (web_ui_specification.md §4.3) ----
+
+  // Must not crash when mySymbol is null (Observer, §5) -- index.html's own
+  // "Player X"/"Player O" markup is already the fallback the spec asks for,
+  // so the null branch just restores it rather than deriving anything.
+  function initPlayerCards(mySymbol) {
+    if (mySymbol === "X") {
+      playerXName.textContent = "You";
+      playerXRole.textContent = "Player";
+      playerOName.textContent = "Opponent";
+      playerORole.textContent = "Player";
+    } else if (mySymbol === "O") {
+      playerOName.textContent = "You";
+      playerORole.textContent = "Player";
+      playerXName.textContent = "Opponent";
+      playerXRole.textContent = "Player";
+    } else {
+      playerXName.textContent = "Player X";
+      playerXRole.textContent = "Observing";
+      playerOName.textContent = "Player O";
+      playerORole.textContent = "Observing";
+    }
+  }
+
+  // currentTurn === null (game over, or not yet known) leaves neither card
+  // active -- both toggles simply evaluate false, no separate branch needed.
+  function updateActiveCard(currentTurn) {
+    playerXCard.classList.toggle("active", currentTurn === "X");
+    playerOCard.classList.toggle("active", currentTurn === "O");
+  }
+
+  // Starting a new match in the same tab must not show the previous match's
+  // frozen board, win highlight, or active-turn state before the new match's
+  // own joined arrives (web_ui_specification.md §7; code review #1, v03.01,
+  // for the same principle applied to the WebSocket itself).
+  function resetBoardAndCards() {
+    state.lastBoard = null;
+    for (const cell of ensureCells()) {
+      cell.textContent = "";
+      cell.className = "cell empty disabled";
+      cell.disabled = true;
+    }
+    initPlayerCards(null);
+    updateActiveCard(null);
+    statusError.hidden = true;
+    turnBanner.textContent = "Not connected";
+  }
+
   // ---- Lobby REST calls ----
 
   async function createMatch() {
@@ -185,6 +239,7 @@
     // A new match in the same tab must start fully interactive again -- game_over
     // is the only thing that ever sets this false (web_ui_specification.md §7).
     state.isGameActive = true;
+    resetBoardAndCards();
 
     setMatchIdDisplay(matchId);
 
@@ -243,12 +298,15 @@
         state.mySymbol = payload.symbol;
         turnBanner.textContent =
           state.mySymbol === null ? "Observing" : `You are ${state.mySymbol}`;
+        initPlayerCards(state.mySymbol);
+        updateActiveCard(payload.current_turn);
         renderBoard(
           payload.board, payload.valid_moves, payload.current_turn,
           state.mySymbol, state.isGameActive
         );
         break;
       case "state_update":
+        updateActiveCard(payload.current_turn);
         renderBoard(
           payload.board, payload.valid_moves, payload.current_turn,
           state.mySymbol, state.isGameActive
@@ -262,6 +320,9 @@
         turnBanner.textContent = `Game Over — ${payload.result}`;
         statusLabel.textContent = `Game Over — ${payload.result}`;
         freezeBoard();
+        // game_over carries no current_turn -- neither card should read as
+        // active once the game has ended.
+        updateActiveCard(null);
         if (payload.result === "X" || payload.result === "O") {
           const line = computeWinningLine(state.lastBoard, payload.result);
           if (line) {
