@@ -1,3 +1,26 @@
+Version 02.03.00 (2026-08-16)
+-----------------------------
+- agent/agent.py: CLI args, join_match, AgentSession + real WS connect (ARENA-093)
+- agent/agent.py: decide() -- prompt -> LLMClient -> validate -> retry -> random
+  legal fallback, so the agent never stalls the match on a hallucinated move
+  (ARENA-094)
+- agent/agent.py: chat sent before submit_move on every on-turn decision, both
+  sides' moves/chat recorded into memory, game_over handling, line-buffered
+  stdout/stderr for the CLI (ARENA-095)
+- Full end-to-end integration suite against a real server (ScriptedLLMClient
+  throughout, zero paid API calls): a full game to game_over, and the
+  retry-then-fallback path exercised live, not only in isolation (ARENA-096) --
+  this is the v02 release gate
+- v02.03 code review: 1 fix-now -- a socket that died between accept() and its
+  own `joined` send left its already-assigned seat permanently leaked (the
+  seat-cleanup path only knew about sockets that reached
+  ConnectionManager.connect()); now released directly when that never happened
+- also fixed during ARENA-095 validation: server/main.py sent `joined` to a
+  newly-connected socket only after registering it for broadcasts, so a
+  concurrent broadcast (e.g. the opponent's opening move) could beat it on the
+  wire, violating "joined is always the first message a client receives"
+  (architecture.md §6.2); reordered to send `joined` first
+
 Version 02.02.00 (2026-08-16)
 -----------------------------
 - agent/profile.py: AgentProfile.load_from_yaml + profiles/aggressive.yml (ARENA-090)
