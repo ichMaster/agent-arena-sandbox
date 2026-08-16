@@ -1,3 +1,17 @@
+Version 05.02.00 (2026-08-16)
+-----------------------------
+- tests/test_agent_vs_agent.py (new): two real AgentSessions, each
+  ScriptedLLMClient-backed, play a full game to game_over over a real live
+  server -- mirroring scripts/run_arena.sh's production shape but
+  deterministic, free, and part of the default suite; plus an Observer
+  watching that same match to completion without claiming a seat
+- Reconciliation: confirmed the live-server fixture, human-vs-agent,
+  observer join, disconnect/reconnect, and throwaway-DB + foreign_keys=ON
+  coverage were already in place from v01.03-v05.01 -- agent-vs-agent was
+  the one genuine gap this version closes
+- v05.02 code review: clean pass, no findings
+- Suite now 229 tests, all green, mypy --strict clean, zero paid API calls
+
 Version 05.01.00 (2026-08-16)
 -----------------------------
 - server/websockets.py: ConnectionManager now serializes every send_text/
