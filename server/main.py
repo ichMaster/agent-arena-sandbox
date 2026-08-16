@@ -89,6 +89,8 @@ async def websocket_endpoint(websocket: WebSocket, match_id: str) -> None:
             return
 
         await websocket.accept()
+        symbol: str | None = None
+        registered = False
         try:
             symbol = await assign_symbol(repo, match_id, participant.token)
             game = await repo.reconstruct_game(match_id)
@@ -111,6 +113,7 @@ async def websocket_endpoint(websocket: WebSocket, match_id: str) -> None:
                 ),
             )
             await manager.connect(match_id, websocket, participant.token)
+            registered = True
 
             while True:
                 raw = await websocket.receive_text()
@@ -190,4 +193,13 @@ async def websocket_endpoint(websocket: WebSocket, match_id: str) -> None:
             # cancellation is scope-based, and asyncio.shield doesn't understand it
             # (it deadlocks here instead of protecting the cleanup).
             with anyio.CancelScope(shield=True):
-                await manager.disconnect(match_id, websocket, repo)
+                if registered:
+                    await manager.disconnect(match_id, websocket, repo)
+                elif symbol is not None:
+                    # The socket never made it into ConnectionManager -- e.g. it
+                    # died between accept() and the joined send, itself after
+                    # assign_symbol already committed a seat. manager.disconnect()
+                    # only releases a seat for a socket it knows about, so an
+                    # unregistered socket's seat would otherwise leak permanently
+                    # and the match could never seat a second player.
+                    await repo.release_seat(match_id, participant.token)

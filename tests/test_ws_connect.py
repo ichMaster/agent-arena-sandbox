@@ -3,12 +3,14 @@
 
 from __future__ import annotations
 
+import httpx
 import pytest
+import websockets
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
 from server.database import async_session_maker
-from server.main import app
+from server.main import app, manager
 from server.repository import Repository
 
 
@@ -84,6 +86,46 @@ async def test_disconnect_releases_the_seat() -> None:
         match_id, token = _create_and_join(client)
         with client.websocket_connect(f"/ws/match/{match_id}?token={token}") as ws:
             ws.receive_json()  # joined -- seat is assigned by now
+
+    async with async_session_maker() as session:
+        repo = Repository(session)
+        participant = await repo.get_participant(match_id, token)
+        assert participant is not None
+        assert participant.symbol is None
+
+
+async def test_seat_is_released_if_the_socket_dies_before_joined_is_sent(
+    live_server: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """assign_symbol() commits the seat in the DB before `joined` is ever sent (code
+    review #1, v02.03). If the socket dies in that window -- send_to() raising, e.g.
+    because the client already disconnected -- the seat must still be released, not
+    leaked forever: manager.disconnect()'s cleanup only knows about sockets that
+    reached manager.connect(), so an unregistered socket's seat would otherwise never
+    come free and the match could never seat a second player.
+    """
+    async with httpx.AsyncClient() as client:
+        match_id = (await client.post(f"{live_server}/api/v1/lobby/match")).json()["match_id"]
+        token = (await client.post(
+            f"{live_server}/api/v1/lobby/join",
+            json={"match_id": match_id, "player_name": "Alice"},
+        )).json()["token"]
+
+    original_send_to = manager.send_to
+    calls = {"n": 0}
+
+    async def _flaky_send_to(ws: object, event: object) -> None:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("simulated disconnect before joined is sent")
+        await original_send_to(ws, event)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(manager, "send_to", _flaky_send_to)
+
+    ws_base = live_server.replace("http", "ws")
+    with pytest.raises(Exception):
+        async with websockets.connect(f"{ws_base}/ws/match/{match_id}?token={token}") as ws:
+            await ws.recv()
 
     async with async_session_maker() as session:
         repo = Repository(session)
