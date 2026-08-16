@@ -1,3 +1,24 @@
+Version 05.01.00 (2026-08-16)
+-----------------------------
+- server/websockets.py: ConnectionManager now serializes every send_text/
+  close per socket with its own asyncio.Lock -- closes the finding deferred
+  from v01.04 (broadcast() can be called by a different connection's task
+  than the one that owns the recipient socket, with nothing previously
+  serializing concurrent sends to it)
+- End-to-end reconnect verified through the real WS endpoint: a disconnected
+  participant reconnecting with the same token reclaims their seat
+  (confirmation of existing behavior, backed by a new integration test)
+- Regression-guarded the cancellation-safe cleanup primitive
+  (anyio.CancelScope(shield=True)) that v01.04 originally fixed --
+  including a test proving asyncio.shield() specifically does not work for
+  this, reproducing why that fix needed anyio's own primitive
+- Reconciliation: confirmed dead-socket broadcast survival, malformed-JSON
+  handling, bad-token rejection, and graceful-disconnect seat release were
+  already correctly implemented and tested from v01.03/v01.04 -- this
+  version's real work was narrower than the roadmap's full DoD line list
+- v05.01 code review: 1 fix-now (LOW) -- hardened a plausible, undemonstrated
+  race in the new reconnect test's own assertion timing
+
 Version 04.02.00 (2026-08-16)
 -----------------------------
 - scripts/run_arena.sh (new): one-command agent-vs-agent demo -- creates a
