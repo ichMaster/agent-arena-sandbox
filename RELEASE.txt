@@ -1,3 +1,20 @@
+Version 03.03.00 (2026-08-16)
+-----------------------------
+- web/app.js: chat panel -- post (guarded, non-optimistic), render, self/other
+  styling derived from myPlayerName (the real, tested sender contract),
+  auto-scroll, system notices on match start/end (ARENA-103)
+- Corrected web_ui_specification.md §4.4: chat_message.sender is the
+  participant's player_name, not a seat symbol as previously documented
+- web/app.js: Observer role hardening -- chat input/send now gated on role
+  (mySymbol !== null) as well as connection state, not connection state
+  alone; explicit release-gate test coverage for the spectator submit_move
+  refusal, symbol:null on Observe, and Host/Join defaulting to non-spectator
+  (ARENA-104)
+- v03.03 code review (v03 release gate): 1 fix-now -- every user's name
+  prompt defaulted to the same literal "Player", so two participants who
+  both accepted the default (the lowest-effort path) collided and each saw
+  the other's chat rendered as their own; now a random per-prompt suffix
+
 Version 03.02.00 (2026-08-16)
 -----------------------------
 - web/app.js: renderBoard -- nine cells created once, marks + playability
