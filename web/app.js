@@ -33,6 +33,7 @@
   const btnObserve = document.getElementById("btn-observe");
   const chatInput = document.getElementById("chat-input");
   const chatSend = document.getElementById("chat-send");
+  const boardEl = document.getElementById("board");
 
   // ---- Connection status ----
 
@@ -49,6 +50,56 @@
     matchIdEl.textContent = matchId;
     matchIdWrap.hidden = false;
     matchIdSep.hidden = false;
+  }
+
+  // ---- Board rendering (web_ui_specification.md §4.2) ----
+
+  // Created once on first render, then only updated in place -- no click-listener
+  // churn on every state_update.
+  let cellButtons = null;
+
+  function ensureCells() {
+    if (cellButtons) return cellButtons;
+    cellButtons = [];
+    for (let i = 0; i < 9; i++) {
+      const btn = document.createElement("button");
+      btn.id = `cell-${i}`;
+      btn.type = "button";
+      btn.className = "cell empty disabled";
+      btn.disabled = true;
+      btn.addEventListener("click", () => handleCellClick(i));
+      boardEl.appendChild(btn);
+      cellButtons.push(btn);
+    }
+    return cellButtons;
+  }
+
+  // Real submit_move wiring lands in ARENA-101; this stub exists so the cells'
+  // click listeners (bound once, at creation time, above) have something to call.
+  function handleCellClick(index) {
+    void index;
+  }
+
+  function renderBoard(board, validMoves, currentTurn, mySymbol, isGameActive) {
+    const cells = ensureCells();
+    // Observers (mySymbol === null) are never playable, regardless of currentTurn
+    // (web_ui_specification.md §5) -- mySymbol !== null makes that fall out of
+    // the same formula rather than needing a separate branch.
+    const isMyTurn = isGameActive && mySymbol !== null && currentTurn === mySymbol;
+    for (let i = 0; i < 9; i++) {
+      const cell = cells[i];
+      const mark = board[i];
+      if (mark === "X" || mark === "O") {
+        cell.textContent = mark;
+        cell.className = `cell ${mark.toLowerCase()}`;
+        cell.disabled = true;
+      } else {
+        const playable = isMyTurn && validMoves.includes(i);
+        cell.textContent = "";
+        cell.className = playable ? "cell empty playable" : "cell empty disabled";
+        cell.disabled = !playable;
+      }
+    }
   }
 
   // ---- Lobby REST calls ----
@@ -157,9 +208,16 @@
         state.mySymbol = payload.symbol;
         turnBanner.textContent =
           state.mySymbol === null ? "Observing" : `You are ${state.mySymbol}`;
+        renderBoard(
+          payload.board, payload.valid_moves, payload.current_turn,
+          state.mySymbol, state.isGameActive
+        );
         break;
       case "state_update":
-        // Board re-render lands in v03.02.
+        renderBoard(
+          payload.board, payload.valid_moves, payload.current_turn,
+          state.mySymbol, state.isGameActive
+        );
         break;
       case "chat_message":
         // Chat bubble rendering lands in v03.03.
