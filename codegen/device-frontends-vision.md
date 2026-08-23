@@ -401,6 +401,12 @@ separating them is `b`, how loud it is.
 
 `k` kind, for the icon and colour · `t` the line of text · `b` volume 0–3 · `g` screen to switch to.
 
+**`t` is composed from identifiers, never copied from the log.** `"ARENA-086 x4"` and
+`"v05.03 tagged"` are built by the bridge out of an issue id, a version and a count — not an issue
+title, a commit message or a finding's description. This is the same rule the screens follow, and it
+is what keeps [architecture.md §8](architecture.md) (redaction) out of scope entirely: a frame that
+cannot contain log text cannot leak a secret, so nothing needs redacting on the way to the device.
+
 | | Notification | In the run | `b` |
 |---|---|---|---|
 | event | `run.end` — work finished | 1 | 1 · chime |
@@ -565,6 +571,13 @@ dashboard consumes the same values.
 3. **`state.burndown` is non-monotonic.** `known_points` oscillates `0 → 7 → 0 → 5 → 0`; it tracks
    decomposition, not completion, and cannot drive a progress curve. Screen 6 uses `issue.closed`
    instead.
+4. **`state.current` is degenerate.** In the measured run it reduces to
+   `"execute-issues · execute-issues · execute-issues"` — the step name repeated three times, with no
+   version and no issue. It appears to be assembled as a path through the tree but picks the wrong
+   nodes. The `version · issue · step` label NOW needs is therefore not in the state at all.
+   The bridge builds it instead, from the deepest tree node whose status is *running* (D01). Note it
+   can only be verified against a **live** run — a finished run has no running node, so the bug is
+   invisible there.
 
 **How §5 survives them:** ANALYTICS uses medians over closed spans and states its coverage
 (`sample 42%`); BURNDOWN reads `issue.closed` directly. Neither waits on a fix, and when the fixes land
@@ -577,31 +590,22 @@ dashboard consumes the same values.
 
 ## 10. Open questions
 
-These are genuinely unresolved, not a formality. Each is written the same way: what the question is,
-why it matters, and what the plan is.
+Two decisions nobody has made yet. Each is written the same way: what the question is, why it
+matters, and what the plan is.
 
-### 10.1 Does macOS really cap the write at 182 bytes?
+Several things that used to sit here have moved, because they were not questions:
+the MTU check is a task with a known answer and a known fallback (§2.3.1, first job of D05); the
+degenerate `current` field is an instrumentation defect (§9.4); per-device run selection and a third
+device are decisions already taken, recorded below.
 
-**The question.** When two devices connect over BLE they negotiate how many bytes may travel in a
-single write — that limit is the MTU. This design assumes macOS allows roughly 182 bytes of payload.
-The number comes from CoreBluetooth's typical behaviour and from reading `bleak`'s backend, but it has
-not been measured against a real board.
-
-**Why it matters.** Every frame in §2.3 is sized against it. The largest is 154 bytes, so there is
-28 bytes of headroom — comfortable, but not enormous.
-
-**The plan.** First task of D05: print `client.mtu_size - 3` and compare. If it is smaller than a
-frame, §2.3.1 gives the one-argument fix. If it is larger, nothing needs doing — the headroom simply
-grows.
-
-### 10.2 Should the connection be protected by a key?
+### 10.1 Should the connection be protected by a key?
 
 **The question.** Right now any nearby computer can connect to the device and answer its polls. BLE
 can prevent that through *bonding* — a one-time pairing with a key, after which the device only
 accepts data from a central it already knows.
 
-**Why it matters.** The data itself is not secret: version numbers and counters, and the rule in §5.2
-guarantees no log text ever enters a frame. The risk is different. If someone answers a poll with a
+**Why it matters.** The data itself is not secret: version numbers and counters, and the rule in
+§5.1 keeps log text out of every frame. The risk is different. If someone answers a poll with a
 forged frame reading "all green", the device will render it faithfully and you will believe it. This
 entire document is built around a screen that does not lie, and this is an open door to exactly that.
 
@@ -609,43 +613,7 @@ entire document is built around a screen that does not lie, and this is an open 
 unbonded central. The strongest argument is the StickC: it leaves the desk and ends up where other
 people's machines are nearby.
 
-### 10.3 Should different devices be able to show different runs?
-
-**The question.** Both devices currently follow whichever run is active. Should the Core2 be able to
-display one run while the StickC displays another?
-
-**Why it is harder than it looks.** The dashboard's `/ws` only pushes the latest run. Showing any
-other means the bridge must separately poll `/api/state?run_id=…` and hold a distinct projection per
-device.
-
-**The plan.** Not in v1. Note that the poll protocol makes this cheaper than it would have been under
-push: `want` could carry a run id alongside the screen number, and the bridge would answer for that
-run. The protocol has room; the bridge work is what is deferred.
-
-### 10.4 Could a third device be added later?
-
-**The question.** Nobody has asked for one, but it is worth knowing whether anything would prevent it.
-
-**The answer.** Nothing does, and polling makes it cheaper still — devices do not share a schedule,
-they just ask when they are ready. A third board costs one row in the `devices.py` roster plus a
-profile describing its screen.
-
-### 10.5 Where should the "version · issue · step" label come from?
-
-**The question.** The NOW screen must show where the pipeline currently is. The obvious source is the
-state's `current` field — except that in the measured run it reduces to
-`"execute-issues · execute-issues · execute-issues"`: the step name repeated three times, with no
-version and no issue. The label §5 needs is not in the state.
-
-**Why.** `current` appears to be assembled as a path through the tree but picks the wrong nodes. The
-root cause has not been chased down, because there is a cheaper route for the screen.
-
-**The plan.** The bridge builds the label itself, taking the deepest tree node whose status is
-*running* and composing `version · issue · step` from its coordinates. Cheap to settle at D01. It must
-be verified against a **live** run rather than a finished one — a finished run has no running node, so
-the bug is invisible there.
-
-### 10.6 How long should the StickC keep its screen lit?
+### 10.2 How long should the StickC keep its screen lit?
 
 **The question.** The StickC's screen sleeps and wakes on a notification. The remaining decision is
 for how long.
@@ -657,3 +625,16 @@ the alert fired for nothing. Too long and the battery drains, and there is only 
 carrying the device through a real four-hour run and counting how often you looked too late. Note it
 is a *bridge* parameter, not a firmware constant: the wake duration can ride in the notification, so
 tuning it never means reflashing.
+
+## 10.3 Decided, and out of v1 on purpose
+
+Recorded so they are not re-litigated, and so the reasoning survives:
+
+- **Per-device run selection.** Both devices follow whichever run is active. Showing different runs
+  per device would mean the bridge polling `/api/state?run_id=…` separately and holding a distinct
+  projection per device. The *protocol* already has room — `want` could carry a run id beside the
+  screen number — so this is deferred bridge work, not a design gap.
+- **A third device.** Nothing prevents it, and polling makes it cheaper than push would have:
+  devices share no schedule, they just ask when ready. A third board costs one row in `devices.py`
+  plus a profile. Nobody has asked for one.
+- **Any control over the pipeline.** Permanently out, for the three reasons in §6 — not deferred.
