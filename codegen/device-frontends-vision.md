@@ -26,8 +26,9 @@ hours you will not keep it foregrounded, and a background tab cannot get your at
 mode is not "I could not see the run" — it is "the run needed me nine minutes ago and I was in a
 different window."
 
-A physical device fixes that and nothing else. It is **always visible without being focused**, it
-can **buzz**, and it **cannot be covered by another window**.
+A physical device fixes that and nothing else. It is **always visible without being focused**, it can
+**buzz**, and it **cannot be covered by another window**. The Core2 dims when left alone but never
+goes dark (§4.4) — precisely so that first claim keeps being true.
 
 > **Design consequence, stated up front:** these are *ambient annunciators*, not small dashboards.
 > When a feature would be better on the laptop, it goes on the laptop. §6 gives the two rules that
@@ -42,7 +43,7 @@ can **buzz**, and it **cannot be covered by another window**.
 | **Screen** | 320×240 IPS, capacitive touch | 135×240 TFT, no touch (42% of the area) |
 | **Alerts** | vibration motor + speaker | buzzer + red LED |
 | **Battery** | 390 mAh | 200 mAh |
-| **Power plan** | USB-C on the desk, screen always on | battery, screen asleep between notifications |
+| **Power plan** | USB-C on the desk, dims to 20% but never dark | battery, screen sleeps between notifications |
 | **Screens** | six (§5) | NOW, compressed |
 
 The Core2 sits on the desk and is **read**. The StickC clips to a pocket and is **felt** — it sleeps,
@@ -98,7 +99,7 @@ Because a peripheral cannot read from a central, a poll is **Notify out, Write b
 
 ```
 device --Notify--> {"want":4}          10 B
-bridge --Write --> {…screen 4 JSON…}   61-154 B
+bridge --Write --> {…screen 4 JSON…}   71-164 B
 ```
 
 **A button press is the same message.** Pressing a button changes which screen the device asks for
@@ -111,20 +112,24 @@ Each screen gets its own JSON, prepared on the bridge:
 
 | `want` | Frame | Size | Polled every |
 |---|---|---|---|
-| 0 | **notifications** | 29 B idle · 74/115/151 B with 1/2/3 items | **5 s** |
-| 1 | NOW | 154 B | 15 s |
-| 2 | VELOCITY | 73 B | 120 s |
-| 3 | PLAN | 61 B | 60 s |
-| 4 | FRICTION | 131 B | 60 s |
-| 5 | ANALYTICS | 117 B | 60 s |
-| 6 | BURNDOWN | 137 B | 60 s |
+| 0 | **notifications** | 39 B idle · 84/161 B with 1/3 items | **5 s** |
+| 1 | NOW | 164 B | 15 s |
+| 2 | VELOCITY | 83 B | 120 s |
+| 3 | PLAN | 71 B | 60 s |
+| 4 | FRICTION | 141 B | 60 s |
+| 5 | ANALYTICS | 127 B | 60 s |
+| 6 | BURNDOWN | 147 B | 60 s |
 
-The largest is 154 bytes against a write limit of roughly 182 (§2.3.1), so nothing is close. Nor can
-it drift there, because **the screen bounds the frame**: 320×240 can only display so much, and the
-bridge already truncates to exactly what fits (§3.1). A frame cannot outgrow the screen it feeds.
+Every answer also carries `next` (§4.2) and `dim` (§4.4); both are counted above.
+
+The largest is 164 bytes against a write limit of roughly 182 (§2.3.1) — **18 bytes of headroom**,
+which is the tightest margin in the design and worth watching. It cannot drift much further, because
+**the screen bounds the frame**: 320×240 can only display so much, and the bridge already truncates
+to exactly what fits (§3.1). A frame cannot outgrow the screen it feeds. If a future field does push
+NOW over, §2.3.1 gives the one-argument fix.
 
 Only two channels are ever active — notifications, and whichever screen is showing. That is
-**12 polls per minute plus 0.5–4**, and about **880 bytes per minute**.
+**12 polls per minute plus 0.5–4**, and roughly **950 bytes per minute**.
 
 > The 673 bytes of all seven frames added together is a number with no meaning: nothing ever sends
 > them as one object. An earlier draft treated that sum as a constraint and invented a round-robin
@@ -136,7 +141,7 @@ macOS CoreBluetooth negotiates an ATT MTU of roughly 185, leaving about **182 by
 write-without-response**, well below the 512 an ESP32 accepts. Verified against `bleak` 3.0.2's
 CoreBluetooth backend, which derives it as
 `peripheral.maximumWriteValueLengthForType_(CBCharacteristicWriteWithoutResponse) + 3` — so the check
-at D04 is one line: `client.mtu_size - 3`.
+at D05 is one line: `client.mtu_size - 3`.
 
 `bleak` does not split a write; an oversized buffer is the caller's problem. If the real limit ever
 turns out smaller than a frame, the fix is one argument —
@@ -289,7 +294,7 @@ is not generated.
 | Characteristic | Direction | Properties | Carries |
 |---|---|---|---|
 | `input` | device → laptop | Notify | `{"want":0}` or `{"want":4}` — 10 B |
-| `frame` | laptop → device | Write Without Response | the answer, 29–154 B |
+| `frame` | laptop → device | Write Without Response | the answer, 39–164 B |
 | `info` | device → laptop | Read | board type, firmware version, schema `v` understood |
 
 Write Without Response is right here because a lost answer costs one interval — the device asks again
@@ -335,6 +340,43 @@ v01–v03 run 23 gaps ran over a minute and the longest was 26, and a frozen scr
 indicator is not a slow device but a lying one. The device answers it without logic: when the link
 goes down the radio says so (§3.1). Closed lid, killed bridge, out of range — all three become the
 same disconnect event, and the device draws the disconnected screen.
+
+### 4.4 Dimming and wake
+
+Brightness steps down on a ladder **derived from the NOW poll interval** (§2.3), not from hand-picked
+constants — so if that interval is ever retuned, the ladder follows instead of quietly becoming
+wrong.
+
+| Idle for | **Core2** | **StickC Plus2** |
+|---|---|---|
+| — | 100% | 100% |
+| 2× interval · 30 s | **50%** | **off** |
+| 3× interval · 45 s | **20%** | — |
+
+**The Core2 never goes dark**, and that is the whole reason §1 can still claim it is always visible.
+At 20% it is dim enough to stop being a light source on a desk at night and bright enough to read
+across the room. **The StickC does go dark**, because it is a pager: its job between notifications is
+to be a lump in a pocket, and 200 mAh does not fund anything else. The split falls exactly along the
+roles in §1.1 — one board is read, the other is felt.
+
+**The bridge owns the ladder, as it owns everything else.** Each answer carries `dim` (100, 50, 20 or
+0) and the device just sets the backlight. A 15 s poll is fine-grained enough to land on both steps,
+and the device runs no timer — §3.1 still holds with nothing carved out.
+
+**Every way of waking it is the same message.** A button press, or a tap on the Core2's touch screen,
+sends `{"want":N}` — a tap simply keeps the current N. The bridge reads any incoming `want` as *the
+user is present*, restarts the ladder, and answers `dim:100`. There is no tap protocol, no wake
+protocol, and nothing on the device to remember.
+
+**Any notification wakes the screen too, including a silent one.** This makes `b` cleanly one thing:
+it controls sound and vibration only, never the backlight. A `release.tagged` at `b:0` still lights
+the panel — quietly, which is the point. At one notification per four minutes (§5.1) the Core2 spends
+a fair share of a run at full brightness without anyone touching it, which is the behaviour you want:
+bright exactly when something just happened.
+
+**Polling continues while dimmed.** It must — that is how the device learns a notification arrived.
+On the Core2 that costs nothing on USB power, and on the StickC `next` stretches to 60 s the moment a
+run finishes (§4.2).
 
 ---
 
@@ -455,9 +497,11 @@ Two consequences:
 
 ## 6. Input — and how six screens stay ambient
 
-Buttons choose the screen, and wake the StickC. That is the whole input surface — and per §2.2 a press
-is not handled locally: it changes which screen the device asks for, and the request goes out
-immediately, so switching never waits for an interval.
+Buttons choose the screen; a tap on the Core2's touch panel restores full brightness without changing
+it. That is the whole input surface, and both are the *same message* — per §2.2 and §4.4 a press is
+not handled locally: it changes which screen the device asks for, a tap keeps the current one, and
+either way the request goes out immediately. Switching never waits for an interval, and there is no
+separate tap or wake protocol to maintain.
 
 Six screens would contradict §1's "ambient annunciator, not a small dashboard" **if you had to hunt
 through them**. Two rules remove the hunting, and both live on the bridge:
@@ -588,45 +632,48 @@ dashboard consumes the same values.
 
 ---
 
-## 10. Open questions
+## 10. Decisions taken
 
-Two decisions nobody has made yet. Each is written the same way: what the question is, why it
-matters, and what the plan is.
+Nothing here is open any more. A design doc gets read later by someone asking "did they think about
+X?", so the answers stay, with their reasoning, instead of being deleted once made.
 
-Several things that used to sit here have moved, because they were not questions:
-the MTU check is a task with a known answer and a known fallback (§2.3.1, first job of D05); the
-degenerate `current` field is an instrumentation defect (§9.4); per-device run selection and a third
-device are decisions already taken, recorded below.
+### 10.1 No pairing or bonding — an accepted risk
 
-### 10.1 Should the connection be protected by a key?
+**Decided:** the link is unprotected. Any central in range can connect and answer polls.
 
-**The question.** Right now any nearby computer can connect to the device and answer its polls. BLE
-can prevent that through *bonding* — a one-time pairing with a key, after which the device only
-accepts data from a central it already knows.
+**The risk, stated plainly:** a forged frame reading "all green" would be rendered faithfully, and
+believed. This is the one way the screen can lie that nothing else in the design prevents — worth
+naming precisely because the rest of the document works so hard to stop exactly that.
 
-**Why it matters.** The data itself is not secret: version numbers and counters, and the rule in
-§5.1 keeps log text out of every frame. The risk is different. If someone answers a poll with a
-forged frame reading "all green", the device will render it faithfully and you will believe it. This
-entire document is built around a screen that does not lie, and this is an open door to exactly that.
+**Why it is accepted:** the attack needs someone inside BLE range who knows the service UUID and
+actively wants to mislead you about a build monitor on your own desk. That does not justify pairing
+friction on a board that gets re-flashed often.
 
-**The plan.** Leaning toward a static passkey at D05, with the device ignoring answers from an
-unbonded central. The strongest argument is the StickC: it leaves the desk and ends up where other
-people's machines are nearby.
+**The practical consequence is occupancy, not security.** A BLE peripheral serves one central at a
+time, so whichever machine connects first has it. The bridge reconnects when it frees up; nothing is
+lost and nothing is corrupted.
 
-### 10.2 How long should the StickC keep its screen lit?
+Revisit if a device ever moves from a trusted space to a shared one.
 
-**The question.** The StickC's screen sleeps and wakes on a notification. The remaining decision is
-for how long.
+### 10.2 The brightness ladder — derived rather than chosen
 
-**The trade-off.** Too short and you feel the buzz, look down a second later, and find a dark screen —
-the alert fired for nothing. Too long and the battery drains, and there is only 200 mAh of it.
+**Decided:** steps at 2× and 3× the NOW poll interval (§2.3), which is 15 s — so 30 s and 45 s. The
+Core2 goes 100% → 50% → 20% and never dark; the StickC goes 100% → off at the first step. Full
+detail in §4.4.
 
-**The plan.** Start at 8–10 seconds, but this number cannot be reasoned out. It has to be found by
-carrying the device through a real four-hour run and counting how often you looked too late. Note it
-is a *bridge* parameter, not a firmware constant: the wake duration can ride in the notification, so
-tuning it never means reflashing.
+**Why a rule beats a constant.** A lit screen always spans at least one refresh, so you are never
+reading a snapshot frozen at the instant the buzz fired. And if the NOW interval is ever retuned, the
+ladder follows automatically instead of quietly becoming wrong — which is what would eventually
+happen to a hand-picked "8–10 seconds".
 
-## 10.3 Decided, and out of v1 on purpose
+**Why the two boards differ.** It is the §1.1 split, not an inconsistency: the Core2 is *read*, so it
+stays readable at 20%; the StickC is *felt*, so it sleeps. A 200 mAh battery does not fund a lit
+screen either way.
+
+It is all a **bridge** parameter — `dim` rides in every answer (§4.4), so tuning any of it never
+means reflashing.
+
+### 10.3 Out of v1 on purpose
 
 Recorded so they are not re-litigated, and so the reasoning survives:
 
