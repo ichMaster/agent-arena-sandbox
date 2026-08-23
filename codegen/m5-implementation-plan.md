@@ -1,6 +1,8 @@
 # M5 device frontends — implementation plan
 
-**Status:** in progress — steps 1–4 (the twelve tasks needing no hardware). No board purchased.
+**Status:** steps 1–4 complete — all twelve tasks needing no hardware. 557 Python tests and 134 C++
+checks green, `mypy --strict` and `ruff` clean. **No board purchased**; step 5 is the first that
+needs one, and its first job is the MTU measurement the whole frame budget rests on.
 **Companions:** [device-frontends-vision.md](device-frontends-vision.md) (why · the six screens · the
 poll protocol · every measured figure) · [architecture.md](architecture.md) §1.2, §10.8, §11.1 (where
 the bridge sits, how it is tested, the two `v` fields) · [device/prototype.html](device/prototype.html)
@@ -432,12 +434,20 @@ radio, no board.
 **Dependencies:** M5-002
 
 **Acceptance criteria:**
-- [ ] Every golden frame from M5-005 parses to the expected struct.
-- [ ] A truncated frame is rejected without reading past the buffer.
-- [ ] A frame with an unknown `v` is rejected in a way the caller can render as "firmware too old",
-      not as garbage.
-- [ ] Unknown fields are ignored, so a bridge adding one does not require a reflash.
-- [ ] The host test suite runs with no board attached and is wired into the same CI job as M5-010.
+- [x] All nine golden frames from M5-005 parse — the same fixtures the Python side writes, so a
+      frame only one language understands cannot exist.
+- [x] A truncated frame is rejected without reading past the buffer — **every prefix** of a real
+      frame is tried, not one convenient cut, under AddressSanitizer.
+- [x] A frame with an unknown `v` reports `firmware too old` rather than garbage.
+- [x] Unknown fields are skipped, including nested objects and arrays, so a bridge adding one does
+      not require a reflash.
+- [x] The host suite runs with no board and is wired into `pytest codegen/tests`, skipping cleanly
+      where no compiler exists. One command now covers the whole no-hardware surface.
+- [x] **Added:** built with `-Werror` and address + UB sanitizers. Not decoration — the first run
+      caught a use-after-free (see below).
+- [x] **Added:** an oversized notification queue drops the overflow rather than writing past the
+      array, and a failed parse leaves the struct reset so a caller that ignores the result draws an
+      empty screen rather than garbage.
 
 ---
 
