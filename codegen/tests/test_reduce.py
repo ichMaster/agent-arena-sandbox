@@ -560,3 +560,71 @@ def test_resuming_still_excludes_the_idle_gap() -> None:
         }),
     ]
     assert reduce_mod.reduce(lines, NOW).idle_s >= 600
+
+
+# ── #113: an unclosed node must not accrue against wall-clock ────────────────
+
+
+def _unclosed_step_log() -> list[str]:
+    """A clean run with one ``step.end`` missing — what 7 of 15 versions looked
+    like in run-20260815-213849, where a skill stopped emitting the pair."""
+    return [
+        line for line in gen_log.preset("clean-run").splitlines()
+        if not (
+            json.loads(line).get("type") == "step.end"
+            and json.loads(line)["scope"].get("step") == "execute-issues"
+        )
+    ]
+
+
+def _step_nodes(state: reduce_mod.State) -> list[dict[str, Any]]:
+    found: list[dict[str, Any]] = []
+
+    def walk(node: dict[str, Any]) -> None:
+        if node["kind"] == "step":
+            found.append(node)
+        for child in node.get("children") or []:
+            walk(child)
+
+    for phase in state.as_dict()["tree"]:
+        walk(phase)
+    return found
+
+
+def test_an_unclosed_step_never_outlasts_its_run() -> None:
+    """The defect in #113: a step whose version has ended cannot still be running.
+
+    Before the fix one ``execute-issues`` node reported 620,225 s (172 h) inside a
+    14,702 s (4.1 h) run, because an unclosed node measured to ``now``.
+    """
+    state = reduce_mod.reduce(_unclosed_step_log(), NOW)
+    assert state.elapsed_s > 0
+    for node in _step_nodes(state):
+        assert node["elapsed_s"] <= state.elapsed_s, (
+            f"step {node['id']} reports {node['elapsed_s']}s "
+            f"inside a run of {state.elapsed_s}s"
+        )
+
+
+def test_a_finished_run_reduces_the_same_whenever_you_look_at_it() -> None:
+    """The sharper statement of the same bug, and the one that would have caught it.
+
+    A finished run is a fixed set of facts. If any figure moves because the log sat
+    on disk longer, the reducer is reading a clock it has no business reading.
+    """
+    lines = _unclosed_step_log()
+    immediately = reduce_mod.reduce(lines, NOW).as_dict()
+    much_later = reduce_mod.reduce(lines, NOW + timedelta(days=365)).as_dict()
+    assert immediately == much_later
+
+
+def test_a_running_node_still_grows_while_the_run_is_open() -> None:
+    """The bound must not flatten a live run — an open node measures to ``now``,
+    which is the behaviour the header's elapsed clock depends on."""
+    lines = [
+        line for line in gen_log.preset("clean-run").splitlines()
+        if json.loads(line).get("type") not in {"run.end", "phase.end", "version.end"}
+    ]
+    early = reduce_mod.reduce(lines, NOW)
+    later = reduce_mod.reduce(lines, NOW + timedelta(hours=1))
+    assert later.elapsed_s > early.elapsed_s

@@ -558,9 +558,11 @@ Two things to plan for rather than discover:
 
 - **`state.current` is degenerate on a finished run** (vision §9.4). The NOW label must be checked
   against a **live** run — a finished one has no running node, so the bug is invisible there.
-- **The instrumentation defects in vision §9 are not fixed by this plan.** ANALYTICS and BURNDOWN are
-  built to survive them, and `cov` is the visible symptom. When [#113](https://github.com/ichMaster/agent-arena-sandbox/issues/113)
-  lands, `cov` should rise toward 100 on its own — which is also how that fix gets confirmed.
+- **One of the instrumentation defects in vision §9 is fixed; the rest are not.** The reducer no
+  longer lets an unclosed node accrue against wall-clock ([#113](https://github.com/ichMaster/agent-arena-sandbox/issues/113)).
+  The missing `step.end` emissions are untouched, and **`cov` measures those, not the reducer** —
+  capping an unclosed node does not close it, so the badge stayed at 42 % across that fix. It reaches
+  100 only when the skills stop dropping the pair.
 
 ---
 

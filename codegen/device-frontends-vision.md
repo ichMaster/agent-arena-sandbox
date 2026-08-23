@@ -605,10 +605,12 @@ Building the screens surfaced defects in the tracking system's own instrumentati
 here because §5 is shaped around them, and because they are worth fixing independently — the browser
 dashboard consumes the same values.
 
-1. **Unclosed step nodes accrue elapsed against wall-clock.** 8 of 44 step nodes have
-   `status=running, end=None`; one `execute-issues` node reports **620,225 s (172 h)** for a 4.1-hour
-   run, and the step totals sum to 174 h. Re-reducing with `now = run.ended` gives correct figures, so
-   the reducer should bound an unclosed node by its parent's end.
+1. ~~**Unclosed step nodes accrue elapsed against wall-clock.**~~ **Fixed** ([#113](https://github.com/ichMaster/agent-arena-sandbox/issues/113)).
+   8 of 44 step nodes had `status=running, end=None`, and one `execute-issues` node reported
+   **620,225 s (172 h)** inside a 4.1-hour run, with step totals summing to 174 h. `reduce()` now caps
+   an unclosed node at its parent's end rather than at `now`: on the same log the totals fall to
+   **2.4 h** and the longest step to 2,426 s. A finished run now reduces identically whenever you look
+   at it, which is the property whose absence was the bug.
 2. **Step events are missing for 7 of 15 versions.** Only 8 versions emitted any `step.end`. This is
    emission discipline in `/ship-phase` degrading over a long run, not a reducer fault — and
    discipline is the wrong fix. The reducer should derive step spans from `scope.step`, which every
@@ -625,8 +627,13 @@ dashboard consumes the same values.
    invisible there.
 
 **How §5 survives them:** ANALYTICS uses medians over closed spans and states its coverage
-(`sample 42%`); BURNDOWN reads `issue.closed` directly. Neither waits on a fix, and when the fixes land
-`cov` rises toward 100 on its own — the screen will show that it was fixed.
+(`sample 42%`); BURNDOWN reads `issue.closed` directly. Neither waited on a fix, and neither needs
+revisiting now that item 1 has landed.
+
+**`cov` measures item 2, not item 1.** Fixing the reducer did not move it — coverage is closed-span
+minutes over run minutes, and capping an unclosed node does not close it. `cov` reaches 100 only when
+the skills stop dropping `step.end`, which is why the badge is the honest readout for *that* gap
+specifically.
 
 **These cannot be validated against this log** — the data is already lost. Verification needs a fresh
 `/ship-phase` run, which the repo's generate → observe → reset → regenerate cycle produces anyway.

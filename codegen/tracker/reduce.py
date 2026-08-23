@@ -424,7 +424,8 @@ class _Accumulator:
     # ── finalise ─────────────────────────────────────────────────────────
 
     def finalise(self, state: State) -> None:
-        self._close_elapsed(self.root)
+        run_end = parse_ts(self.ended or "") if self.ended else self.now
+        self._close_elapsed(self.root, run_end)
         self.issue_durations = [
             node.elapsed_s
             for path, node in self.nodes.items()
@@ -458,13 +459,29 @@ class _Accumulator:
         self._metrics(state)
         self._github(state)
 
-    def _close_elapsed(self, node: Node) -> None:
+    def _close_elapsed(self, node: Node, ceiling: datetime | None = None) -> None:
+        """Elapsed per node, bounded by the nearest enclosing end.
+
+        An unclosed node must not accrue against wall-clock without limit. A step
+        whose version has already ended cannot still be running, so its elapsed is
+        capped at that version's end rather than at ``now`` -- otherwise a skill that
+        forgets one ``step.end`` produces a node that grows for as long as the log
+        sits on disk, and reducing a finished run reports a different number every
+        time you look at it.
+
+        Measured before the fix: one ``execute-issues`` node reported 620,225 s
+        (172 h) inside a run that took 14,702 s (4.1 h), and step totals summed to
+        174 h. See issue #113.
+        """
+        limit = ceiling if ceiling is not None else self.now
         start = parse_ts(node.start or "")
-        end = parse_ts(node.end or "") if node.end else self.now
+        end = parse_ts(node.end or "") if node.end else limit
         if start and end:
             node.elapsed_s = max(0.0, (end - start).total_seconds())
+        # A closed node caps its children; an unclosed one passes its own cap down.
+        child_ceiling = end if (node.end and end is not None) else limit
         for child in node.children:
-            self._close_elapsed(child)
+            self._close_elapsed(child, child_ceiling)
 
     def _scope_and_eta(self, state: State) -> None:
         planned = [v for v in state.plan if v not in self.skipped]
