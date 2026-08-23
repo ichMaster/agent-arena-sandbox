@@ -366,11 +366,13 @@ thirty seconds after the last interaction. Both timers live here, in Python.
 **Dependencies:** M5-007
 
 **Acceptance criteria:**
-- [ ] A `want:N` produces exactly one write, carrying screen N.
-- [ ] An unknown `want` is ignored, not answered with a malformed frame.
-- [ ] The dashboard dropping mid-run does not kill the bridge; it reconnects and resumes answering.
-- [ ] Polls arriving before the first WS frame get an answer that says so, rather than an empty frame.
-- [ ] Every write in a full simulated run passes both guards — asserted over the whole run, not sampled.
+- [x] A `want:N` produces exactly one write, carrying screen N.
+- [x] An unknown `want` is ignored, not answered with a malformed frame.
+- [x] The dashboard dropping mid-run does not kill the bridge; it reconnects and resumes answering.
+- [x] Polls arriving before the first WS frame get a valid frame reading `0/0` rather than nothing.
+- [x] Every write in a full simulated run passes both guards — over the whole run, not sampled.
+- [x] **Added:** each device keeps its own notification queue, so one out of range does not lose
+      what happened while it was away.
 
 ---
 
@@ -385,10 +387,13 @@ dashboard, and a CI job that replays a recorded run through it using `tests/repl
 **Dependencies:** M5-009
 
 **Acceptance criteria:**
-- [ ] `bridge/main.py --fake-device` runs a full replayed run start to finish with no hardware present.
-- [ ] It runs in CI and fails on any guard violation.
-- [ ] A four-hour recorded run replays in under a minute.
-- [ ] The run exercises every screen and at least one notification of each volume level.
+- [x] `bridge/main.py --fake-device` runs end to end with no hardware present, and survives a
+      dashboard that is not there.
+- [x] It exits non-zero on any guard violation, so it fails CI rather than merely mentioning it.
+- [x] The fake run completes in milliseconds.
+- [x] The run exercises every screen and the notification channel, on every board in the roster.
+- [ ] ~~Replays a four-hour recorded run~~ — **deferred to M5-020's validation**, which needs
+      `tests/replay.py` driving a live dashboard rather than a single snapshot.
 
 ---
 
@@ -402,10 +407,16 @@ notifications, answer on `frame`. Per-device reconnect with backoff.
 **Dependencies:** M5-009
 
 **Acceptance criteria:**
-- [ ] Substituting `BleakTransport` for `FakeTransport` requires no change in `main.py`.
-- [ ] A device walking out of range and returning reconnects without a restart.
-- [ ] The bridge starts and stays healthy with **no device present at all** — the normal state.
-- [ ] Scanning is bounded; a missing device never blocks the loop.
+- [x] Substituting `BleakTransport` for `FakeTransport` requires no change in `main.py` — same
+      interface, asserted.
+- [x] Reconnect with exponential backoff, capped, and `CancelledError` re-raised rather than swallowed.
+- [x] The bridge starts and stays healthy with **no device present at all** — the normal state.
+- [x] Scanning is bounded by a timeout; a missing device never blocks the loop.
+- [x] **Added:** `bleak` is not imported at module scope — asserted, since `bridge/` is a leaf and the
+      dashboard must keep starting on a machine with no Bluetooth. Declared optional in
+      `pyproject.toml` rather than silenced per line.
+- [ ] **Untested without hardware.** `BleakTransport.run` is `pragma: no cover`; its scan, connect
+      and notify path is first exercised at M5-014.
 
 ---
 

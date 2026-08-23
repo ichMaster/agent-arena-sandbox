@@ -15,6 +15,14 @@ python_version = "3.11"
 warn_unreachable = true
 warn_unused_ignores = true
 
+# bleak is imported lazily inside BleakTransport.run and may legitimately be absent:
+# bridge/ is a leaf, and the dashboard must keep starting on a machine with no
+# Bluetooth. Declaring that here rather than silencing the line keeps the intent in
+# one place, and a test asserts the import really is not at module scope.
+[[tool.mypy.overrides]]
+module = ["bleak", "bleak.*"]
+ignore_missing_imports = true
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"
