@@ -250,10 +250,19 @@ under `codegen/tests/fixtures/frames/`, generated from real reduced states in `r
 **Dependencies:** M5-004
 
 **Acceptance criteria:**
-- [ ] 14 golden frames committed; each reproduces exactly.
-- [ ] Every golden frame passes both guards.
-- [ ] A deliberate one-character change to a projection produces a failing diff naming the field.
-- [ ] Golden frames are generated, not hand-written — asserted by regenerating in CI and diffing.
+- [x] ~~14~~ **9** golden frames committed; each reproduces exactly. **Criterion corrected:** the
+      StickC renders NOW and the notification channel only, so it has no burndown frame to have.
+      Seven plus two, not seven times two.
+- [x] Every golden frame passes both guards.
+- [x] A deliberate one-character change to a projection produces a failing diff naming the field.
+- [x] Golden frames are generated, not hand-written — `python3 -m tests.gen_frames --update-golden`,
+      which refuses to run without the flag, because a golden that rewrites itself asserts nothing.
+- [x] **Added:** built from presets, never from `runs/`. That directory is gitignored, so a golden
+      derived from a recorded run would not survive a clone.
+- [x] **Inherited from M5-004, and its criterion was wrong.** It asked for `cov == 100` on a log with
+      no unclosed steps. That can never happen: coverage is closed-span time over run time, and steps
+      do not tile a run — there is always time between them. A clean preset with every step closed
+      reaches **91%**. The test asserts the *contrast* instead: high when steps close, 0 when none do.
 
 ---
 
