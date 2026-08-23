@@ -1,6 +1,6 @@
 # M5 device frontends — implementation plan
 
-**Status:** not started. No task done; no hardware purchased.
+**Status:** in progress — steps 1–4 (the twelve tasks needing no hardware). No board purchased.
 **Companions:** [device-frontends-vision.md](device-frontends-vision.md) (why · the six screens · the
 poll protocol · every measured figure) · [architecture.md](architecture.md) §1.2, §10.8, §11.1 (where
 the bridge sits, how it is tested, the two `v` fields) · [device/prototype.html](device/prototype.html)
@@ -27,7 +27,7 @@ doc; it is repeated as a decision record, not as a second source of truth.
 | **The device polls; the bridge never pushes.** | Nothing on any screen changes faster than once per three minutes (vision §2.2). Polling removes the scheduler, change-detection and per-device state from the bridge, leaving `(screen) → JSON`. |
 | **Every computation is on the bridge.** No arithmetic beyond value→pixel on the device, no history, no logging, no timers, no state between frames. | It moves logic out of the only place that can be checked solely by eye. `device/shared/` collapses to a JSON parser (vision §3.1). |
 | **One JSON per screen, ASCII only, one BLE write.** | The screen bounds the frame; the largest is 164 B against a ~182 B limit. ASCII means the stock Latin font suffices — no glyph set to ship, no empty boxes that only appear on hardware. |
-| **`bridge/` may use third-party packages; `tracker/` and `hooks/` still may not.** | The bridge is a separate process started deliberately, exactly like `dashboard/`. `codegen/tests/test_dependencies.py` scopes the stdlib rule to `tracker`/`hooks` already — `bleak` goes in `requirements.txt` and that test keeps passing unchanged, but its **comment** naming the file "dashboard and test only" must be widened (M5-001). |
+| **`bridge/` may use third-party packages; `tracker/` and `hooks/` still may not.** | The bridge is a separate process started deliberately, exactly like `dashboard/`. `codegen/tests/test_dependencies.py` scopes the stdlib rule to `tracker`/`hooks` already, so `bleak` goes in `requirements.txt` and that test keeps passing unchanged. *(Corrected at M5-001: the plan claimed the test asserts on the header's "dashboard and test only" wording. It does not — it asserts only that `stdlib-only`, `tracker` and `hooks` appear. The header was widened anyway, because it was about to be false.)* |
 | **Bridge tests live in `codegen/tests/`.** | Same `pytest`, same autouse `CODEGEN_RUNS_DIR` isolation. A third test directory would buy nothing and cost a second command. |
 | **Firmware tests are a separate runner.** | C++ on the host via PlatformIO. Only the frame parser is host-testable; the rest is a display. |
 | **No skill builds this**, same as the tracker. | The decomposition those skills perform is already done — it is this file. |
@@ -126,11 +126,14 @@ No behaviour.
 **Dependencies:** None
 
 **Acceptance criteria:**
-- [ ] `pytest codegen/tests` still passes without `bleak` installed *(nothing imports it yet)*.
-- [ ] `test_dependencies.py` passes: `tracker/` and `hooks/` still import only the stdlib.
-- [ ] `CORE2` and `STICKC` differ in screen size, screen list and ladder — asserted, so a copy-paste
+- [x] `pytest codegen/tests` still passes without `bleak` installed *(nothing imports it yet)* —
+      307 passed with `bleak` genuinely absent from the venv.
+- [x] `test_dependencies.py` passes: `tracker/` and `hooks/` still import only the stdlib.
+- [x] `CORE2` and `STICKC` differ in screen size, screen list and ladder — asserted, so a copy-paste
       profile fails.
-- [ ] `mypy` and `ruff` clean over `codegen/bridge/`.
+- [x] `mypy` and `ruff` clean over `codegen/bridge/`.
+- [x] **Added:** the ladder is *derived* — doubling the NOW interval moves both steps with no other
+      edit, and a ladder never brightens as time passes.
 
 ---
 
