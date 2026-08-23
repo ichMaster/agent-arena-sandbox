@@ -313,17 +313,21 @@ holding any policy.
 - `dim` per vision §4.4: the ladder derived from the NOW interval — Core2 `100 → 50 → 20`, StickC
   `100 → 0`, at 2× and 3×. **Derived, never a constant**: retuning the NOW interval must move the
   ladder with it.
-- Any inbound `want` resets the ladder — the bridge treats a poll as *the user is present* only when it
-  was caused by a press or a tap, so the loop must distinguish a scheduled poll from an interaction.
+- **Corrected at M5-007:** the vision doc says the bridge may read any inbound `want` as *the user is
+  present*. It cannot — that does not distinguish a tap on the current screen from the scheduled poll
+  for that same screen, and this task requires exactly that distinction. The device flags it:
+  `{"want":N,"u":1}`. One optional field is cheaper than guessing.
 
 **Dependencies:** M5-006
 
 **Acceptance criteria:**
-- [ ] Changing the NOW interval in the profile moves both ladder steps, with no other edit.
-- [ ] A finished run yields `next: 60` on every screen.
-- [ ] Idle 30 s → Core2 `dim:50`, StickC `dim:0`; idle 45 s → Core2 `dim:20`; Core2 never emits `dim:0`.
-- [ ] An interaction poll resets to `dim:100`; a scheduled poll does not.
-- [ ] `dim` and `next` are present in **every** answer, including the idle notification response.
+- [x] Changing the NOW interval in the profile moves both ladder steps, with no other edit —
+      asserted through the whole call path, not only `Profile.dim_at`.
+- [x] A finished run yields `next: 60` on every screen — **except notifications**, which keep their
+      rate: they are the channel that can buzz, and a finished run still has a last chime to deliver.
+- [x] Idle 30 s → Core2 `dim:50`, StickC `dim:0`; idle 45 s → Core2 `dim:20`; Core2 never emits `dim:0`.
+- [x] An interaction poll resets to `dim:100`; a scheduled poll does not.
+- [x] `dim` and `next` are present in **every** answer, including the idle notification response.
 
 ---
 
@@ -337,9 +341,12 @@ thirty seconds after the last interaction. Both timers live here, in Python.
 **Dependencies:** M5-007
 
 **Acceptance criteria:**
-- [ ] A retry notification carries `g:4`; a silent `release.tagged` carries no `g`.
-- [ ] Thirty seconds after the last interaction, the next answer carries `g:1`; before that, none does.
-- [ ] `g` is absent, not `null`, when there is nothing to navigate to — a byte saved on every answer.
+- [x] A retry notification carries `g:4`; a silent `release.tagged` carries no `g`.
+- [x] Thirty seconds after the last interaction, the next answer carries `g:1`; before that, none does.
+- [x] `g` is absent, not `null`, when there is nothing to navigate to — a byte saved on every answer.
+- [x] **Added:** an alert beats the return timer. Something just happened, which is worth more.
+- [x] **Added:** polling the notification channel does not change which screen is showing — it is
+      not a screen.
 
 ---
 
