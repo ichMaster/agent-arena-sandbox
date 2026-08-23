@@ -152,11 +152,21 @@ contract the firmware will parse, so it lands before anything produces one.
 **Dependencies:** M5-001
 
 **Acceptance criteria:**
-- [ ] All seven frame types validate a good example and reject one missing each required key.
-- [ ] `assert_fits` rejects a 183-byte frame and accepts a 182-byte one.
-- [ ] `assert_ascii` rejects `·`, `–` and `×` — the three that were caught in review.
-- [ ] Every field the vision doc's frame tables name is present in the schema; a test compares the two
+- [x] All seven frame types validate a good example and reject one missing each required key —
+      *except `s`, which is the discriminator: its absence is a routing failure, not one missing key
+      among many, since there is nothing to validate against until you know which frame it is. Covered
+      by its own test.*
+- [x] `fits` rejects a 183-byte frame and accepts a 182-byte one — asserted at the exact boundary.
+- [x] `is_ascii` rejects `·`, `–` and `×` — the three that were caught in review — plus `█` and `●`,
+      the two a renderer would reach for if frames carried glyphs. Checked over the serialised form,
+      so non-ASCII cannot hide in a nested list or a dict key.
+- [x] Every field the vision doc's frame tables name is present in the schema; a test compares the two
       lists so the doc and the code cannot drift.
+- [x] **Added:** the frame version is asserted *independent* of the event schema version
+      (architecture §11.1) — `bridge/frames.py` must not read `SCHEMA_VERSION`. Comparing the two
+      values proves nothing while both are 1; what matters is that neither derives from the other.
+- [x] **Added:** the `MAX_FRAME_BYTES` reasoning is asserted against the source, because it lives in a
+      `#:` comment that no runtime attribute exposes — and a comment is what a refactor drops.
 
 ---
 
