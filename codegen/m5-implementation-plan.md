@@ -55,7 +55,7 @@ doc; it is repeated as a decision record, not as a second source of truth.
 | 10 | M5-010 | `--fake-device` + CI wiring | S | 3 | — | M5-009 |
 | 11 | M5-011 | `BleakTransport` | M | 3 | — | M5-009 |
 | 12 | M5-012 | `device/shared/` — the frame parser | M | 4 | — | M5-002 |
-| 13 | M5-013 | PlatformIO scaffolding, two targets | S | 5 | **Core2** | M5-012 |
+| 13 | M5-013 | PlatformIO scaffolding, two targets | S | 5 | partly¹ | M5-012 |
 | 14 | M5-014 | BLE peripheral + **MTU verification** | M | 5 | **Core2** | M5-013, M5-011 |
 | 15 | M5-015 | The drawing toolkit | M | 5 | **Core2** | M5-013 |
 | 16 | M5-016 | The six Core2 screens | L | 5 | **Core2** | M5-015, M5-014 |
@@ -65,6 +65,9 @@ doc; it is repeated as a decision record, not as a second source of truth.
 | 20 | M5-020 | Two devices at once | M | 8 | both | M5-019, M5-012 |
 
 **Size legend:** S = 1–2 d · M = 3–5 d · L = 5–8 d
+
+¹ **M5-013 builds without a board.** Compiling is not flashing; only its boot check needs hardware,
+and that one criterion is left unticked. The rest of step 5 does need a board.
 
 **Twelve of twenty tasks need no hardware**, and they carry the majority of the system's logic —
 every statistic, every graph, every notification decision. M5-013 is the first purchase.
@@ -468,10 +471,23 @@ power-hold) plus NimBLE-Arduino (roughly half the RAM of Bluedroid).
 **Dependencies:** M5-012
 
 **Acceptance criteria:**
-- [ ] Both targets build from a clean checkout.
-- [ ] `shared/` is compiled into both, from one copy — asserted by a build that fails if it is duplicated.
-- [ ] The Core2 target boots to a blank screen without a crash loop, on both board revisions if both
-      are available.
+- [x] Both targets build from a clean checkout — `core2` 458,704 B, `stickc` 447,536 B, RAM 0.6% and
+      7.7%. **This needed no board:** compiling is not flashing, and the plan's hardware column was
+      wrong about that. Only the boot check below actually requires one.
+- [x] `shared/` is compiled into both, from one copy — `src/shared/frame.cpp.o` appears in each build
+      tree, and exactly one `frame.cpp` exists on disk. **Criterion corrected:** it asked for "a build
+      that fails if it is duplicated", which no build can do — the two envs never link together, so a
+      second copy would compile happily. Asserted structurally instead, plus a test that no file under
+      `core2/` or `stickc/` shadows a `shared/` filename, since the env filters would let it win.
+- [x] **Added:** `frame_test.cpp` is excluded from both firmware images. It carries its own `main()`
+      and belongs to the host runner.
+- [x] **Added:** the StickC flash geometry is overridden. **espressif32@6.5.0 ships no Plus2 board** —
+      only `m5stick-c`, the original, with 4 MB against the Plus2's 8 MB. The stock definition would
+      size partitions for a board four times smaller than the one in hand.
+- [ ] **The Core2 target boots to a blank screen without a crash loop.** Not verified — no board. This
+      is the single criterion in steps 1–5 that genuinely cannot be checked without hardware, and it
+      is the reason `report_parser_linked()` prints over serial: a firmware that built but silently
+      dropped `shared/` would otherwise look identical to one that did not.
 
 ---
 

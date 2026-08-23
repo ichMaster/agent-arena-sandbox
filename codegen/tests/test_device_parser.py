@@ -59,3 +59,45 @@ def test_the_parser_reads_the_same_goldens_the_projection_writes() -> None:
     assert len(goldens) == 9
     source = (SHARED / "frame_test.cpp").read_text()
     assert "fixtures/frames" in source
+
+
+# ── M5-013: the firmware tree ────────────────────────────────────────────────
+
+
+DEVICE = SHARED.parent
+
+
+def test_both_boards_build_from_one_copy_of_shared() -> None:
+    """The criterion asked for "a build that fails if it is duplicated", which no
+    build can do — two envs never link together, so a second copy would compile
+    happily. What is checkable is that no second copy exists, and that both envs name
+    the same directory."""
+    assert len(list(DEVICE.rglob("frame.cpp"))) == 1
+
+    ini = (DEVICE / "platformio.ini").read_text()
+    core2, stickc = ini.split("[env:core2]")[1].split("[env:stickc]")
+    assert "+<shared/>" in core2 and "+<shared/>" in stickc
+    assert "-<shared/frame_test.cpp>" in core2 and "-<shared/frame_test.cpp>" in stickc
+
+
+def test_neither_board_shadows_a_shared_filename() -> None:
+    """A file named frame.cpp under core2/ would be picked up by that env's filter and
+    quietly win over the shared one."""
+    shared_names = {p.name for p in SHARED.glob("*.cpp")} | {p.name for p in SHARED.glob("*.h")}
+    for board in ("core2", "stickc"):
+        for source in (DEVICE / board).glob("*"):
+            assert source.name not in shared_names, f"{board}/{source.name} shadows shared/"
+
+
+def test_the_stickc_flash_geometry_is_overridden() -> None:
+    """PlatformIO ships no StickC **Plus2** board — only `m5stick-c`, the original,
+    with 4 MB. The Plus2 has 8 MB, so the stock definition would size partitions for a
+    board four times smaller than the one in hand."""
+    ini = (DEVICE / "platformio.ini").read_text()
+    stickc = ini.split("[env:stickc]")[1]
+    assert "flash_size = 8MB" in stickc
+    assert "default_8MB.csv" in stickc
+
+
+def test_build_artefacts_are_not_committed() -> None:
+    assert ".pio/" in (DEVICE / ".gitignore").read_text()
