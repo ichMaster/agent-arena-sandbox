@@ -245,3 +245,5 @@ real log.
 | [architecture.md](architecture.md) | the event contract, log format, guarantees, test strategy |
 | [dashboard-specification.md](dashboard-specification.md) | how the UI is built, and the design rules behind it |
 | [implementation-plan.md](implementation-plan.md) | the 24 build tasks, and the validation workload |
+| [device-frontends-vision.md](device-frontends-vision.md) | design vision — a Core2 desk display and a StickC Plus2 pager as ambient frontends over BLE (not built) |
+| [device-frontends-vision.uk.md](device-frontends-vision.uk.md) | Ukrainian translation of the above (the English version is the source of truth) |
