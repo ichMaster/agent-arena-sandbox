@@ -9,7 +9,8 @@
 Супровідні документи: [ship-phase-tracking-vision.md](ship-phase-tracking-vision.md) (навіщо існує
 трекінг), [architecture.md](architecture.md) (журнал подій і редюсер),
 [dashboard-specification.md](dashboard-specification.md) (вебінтерфейс, з якого робиться проєкція),
-[device/prototype.html](device/prototype.html) (шість екранів, відрендерених зі справжніх кадрів).
+[device/prototype.html](device/prototype.html) (шість екранів, відрендерених зі справжніх кадрів),
+[m5-implementation-plan.md](m5-implementation-plan.md) (20 задач `M5-###`, які це будують).
 
 > Переклад документа [device-frontends-vision.md](device-frontends-vision.md). Англійська версія є
 > джерелом істини — оновлюйте спершу її.

@@ -13,14 +13,17 @@ intent.
 
 ## 1. Components
 
-Four pieces, one direction of dependency. Nothing downstream is required for the pipeline to run.
+One direction of dependency throughout. Nothing downstream is required for the pipeline to run.
 
 ```
- skills ──emit──┐
-                ├──►  events.jsonl  ──►  reducer  ──►  state.json  ──►  dashboard ──WS──► browser
- hooks  ──emit──┘      (append-only)      (pure)        (snapshot)
-                                              ▲
- git ─────────────────────────────────────────┘  (reconciliation only, after the fact)
+ skills ──emit──┐                                                     ┌──► browser
+                ├──► events.jsonl ──► reducer ──► state.json ──► dashboard ──WS──┐
+ hooks  ──emit──┘     (append-only)    (pure)      (snapshot)         │          │
+                            ▲                                         └──────────┴──► bridge
+ git ───────────────────────┘  (reconciliation only, after the fact)                      │
+                                                                              BLE, device-polled
+                                                                                          ▼
+                                                                          Core2 · StickC Plus2
 ```
 
 | Component | Path | Responsibility |
@@ -30,11 +33,33 @@ Four pieces, one direction of dependency. Nothing downstream is required for the
 | **Reducer** | `codegen/tracker/reduce.py` | Pure `events → state`. No I/O beyond reading the log. |
 | **Hooks** | `codegen/hooks/*.py` | Harness-invoked; translate tool calls into events. |
 | **Dashboard** | `codegen/dashboard/server.py` | Tails the log, serves the UI, pushes over WS. |
+| **Bridge** | `codegen/bridge/` | BLE central. Subscribes to the dashboard's WS, answers device polls with per-screen JSON. §1.2 |
+| **Firmware** | `codegen/device/` | Renders those frames on an M5Stack panel. Not Python; see §10.8. |
 | **Reset** | `codegen/reset.py` | Deletes what a run created, read from its own log (skill: `reset-generated`). |
 | **Tests** | `codegen/tests/` | See §10. **Not** the app's `tests/`, which is deleted every run. |
 
 **Dependency rule.** `tracker/` imports nothing. `hooks/` imports `tracker/`. `dashboard/` imports
-`tracker/`. Nothing imports `server/`, `games/`, or `agent/` — those directories may not exist.
+`tracker/`. `bridge/` imports `tracker/` and talks to `dashboard/` **over HTTP**, never by import.
+Nothing imports `server/`, `games/`, or `agent/` — those directories may not exist. Nothing imports
+`bridge/`: it is a leaf, and the dashboard must keep starting on a machine with no Bluetooth and no
+`bleak` installed.
+
+### 1.2 The bridge is a client, not a stage
+
+The bridge consumes `ws://127.0.0.1:8420/ws` — **the same frames the browser gets** — and projects
+them down to per-screen JSON small enough for one BLE write. It is placed there rather than inside
+`dashboard/server.py` for four reasons, in order of weight:
+
+- **The frontends cannot disagree.** Browser and panels render one state object, projected
+  differently. A device computing its own figures would eventually contradict the screen beside it.
+- **`server.py` stays a pure reader.** `bleak` never enters that process.
+- **A dead bridge is invisible** — principle 2 (*emission must never gate the pipeline*), one hop
+  further out.
+- **It is testable without a radio** (§10.8).
+
+The full contract — frame shapes, the poll protocol, per-screen sizes and cadences, the notification
+channel — lives in **[device-frontends-vision.md](device-frontends-vision.md)**, which owns it. This
+document does not mirror it; §11.1 covers only where the two version numbers meet.
 
 ### 1.1 Who builds this — and why not the pipeline
 
@@ -52,6 +77,25 @@ strict rather than stylistic:
 
 Two codebases, two plans, two test suites, two lifecycles — and one pipeline, which touches only one
 of them.
+
+**The device work is a third, on the same reasoning.** `bridge/` and `device/` are built by ordinary
+development under their own namespace, **`M5-###`**, planned in
+[m5-implementation-plan.md](m5-implementation-plan.md). Every argument in the table above applies
+unchanged, and one is stronger: the lifecycle differs *again*. The tracker is Python that runs in CI;
+the device adds C++ firmware, a PlatformIO toolchain, and stages that cannot run without a board
+plugged in. Folding those into `implementation-plan.md` — a plan whose status line reads *implemented,
+all 24 tasks done* — would also destroy the record of a finished body of work.
+
+Three namespaces, three lifecycles, and no overlap:
+
+| | `ARENA-###` | `TRK-###` | `M5-###` |
+|---|---|---|---|
+| Builds | the generated application | the tracker | the bridge and the firmware |
+| Plan | `spec/implementation/` | `implementation-plan.md` | `m5-implementation-plan.md` |
+| Built by | `/ship-phase` | ordinary development | ordinary development |
+| On GitHub | yes | no | no |
+| Lifecycle | deleted every run | permanent | permanent |
+| Needs hardware | no | no | **yes, from M5-013** |
 
 **No skill builds the tracker — not even a codegen-specific fork.** A fork was considered and rejected:
 the decomposition those skills exist to perform is already done (it is `implementation-plan.md`), so a
@@ -75,6 +119,10 @@ systems, and the plan file's checkboxes are the record of progress.
 
 A tracker test must never depend on the application existing, and an application test must never know
 the tracker exists.
+
+**Bridge tests join `codegen/tests/`**, not a third directory: the bridge is Python, it runs under the
+same `pytest`, and the autouse fixture that isolates `CODEGEN_RUNS_DIR` protects it for free. Firmware
+tests are a separate runner by necessity (§10.8).
 
 ---
 
@@ -529,6 +577,30 @@ Visual layout. Screenshots are checked by eye during development (that is how th
 surfaced); pixel-diffing a dashboard against a golden image is a maintenance cost with a poor
 detection rate. The palette validator covers the part of "looks right" that is actually computable.
 
+### 10.8 Bridge and firmware
+
+The device design deliberately puts **every computation on the bridge** and leaves the firmware a
+renderer, so the hardware-dependent surface is as small as it can be. That is a testability decision
+before it is an architectural one: it moves logic from the place that can only be checked by eye into
+the place `pytest` already reaches.
+
+| What | Where it runs | How |
+|---|---|---|
+| `project(state, profile, screen)` | `pytest` | Pure function. Golden frames per profile per screen, over real reduced states from `runs/`. |
+| Frame guards | `pytest` | `len(frame) <= 182` and `json.dumps(frame).isascii()` for every frame, including a notification response holding three items. |
+| Notification queue, `next`, `dim`, `g` | `pytest` | Volume catalogue, drain order, pacing when a run ends, the brightness ladder, auto-return. No buzzer involved. |
+| Poll loop, fan-out | `pytest` | `FakeTransport` records writes. **Two fakes**, so the case that matters is covered: one device dropping must not stall the other. |
+| End to end | CI | `bridge/main.py --fake-device` against a real dashboard, no hardware. `tests/replay.py` drives a recorded four-hour run through it in seconds. |
+| Frame parser | host C++ | Compiled and tested on the host, no board. Malformed, truncated and future-schema frames each get a case, because all three will happen. |
+
+**Two one-line guards earn their place.** The ASCII assertion means a stray `·` or `–` fails CI rather
+than rendering as an empty box on a panel nobody is looking at; the size assertion means a new field
+that breaks single-write delivery fails CI rather than silently halving a refresh rate months later.
+
+What genuinely needs hardware: two displays, two buzzers, the LED, and the BLE peripheral itself —
+checked by eye, exactly as §10.7 describes. Everything that could be *wrong* rather than *ugly* is
+verified in Python.
+
 ---
 
 ## 11. Schema evolution
@@ -542,6 +614,26 @@ detection rate. The palette validator covers the part of "looks right" that is a
 - A log may contain mixed `v` — the tracker can be upgraded mid-run. Reduce per-event by its own `v`.
 - `schema.json` is the single source of truth; §2 and §3 of this document are its prose mirror and are
   updated in the same commit as any change to it.
+
+### 11.1 There are two fields named `v`, and they are unrelated
+
+A log event opens `{"v":1,"ts":…}` and a device frame opens `{"v":1,"s":1,…}`. Same key, same current
+value, **different contracts on different wires** — and they version independently:
+
+| | Event `v` | Frame `v` |
+|---|---|---|
+| Governs | `events.jsonl` — this document, §2–3 | the BLE frames — [device-frontends-vision.md](device-frontends-vision.md) |
+| Owned by | `tracker/schema.json` | the bridge and the firmware, together |
+| Read by | reducer, dashboard, bridge | firmware only |
+| Bumps when | the event contract breaks | a frame's shape breaks |
+
+Nothing forces them to move together, and nothing should. The bridge is the only component that sees
+both: it consumes events at one version and emits frames at another, which is exactly why the
+firmware's `info` characteristic reports the frame version it understands — a bridge speaking frame
+`v:2` to firmware that knows only `v:1` says so on the panel instead of rendering nonsense.
+
+Conflating the two would be an easy and expensive mistake: bumping the event schema does not oblige a
+reflash, and reshaping a screen does not touch the log.
 
 ---
 
@@ -561,3 +653,9 @@ itself.
 
 Step 4 is where the system starts earning its keep: it is the first point at which the log contains
 something git cannot tell you afterwards.
+
+**The device is built after all six**, and against `state.json` rather than against the log — so it
+depends on step 2 and nothing later. Its own build order is
+[m5-implementation-plan.md](m5-implementation-plan.md); the short version is that everything through
+the bridge is ordinary Python needing no purchase, and the firmware stages begin only once that is
+green.

@@ -1,0 +1,585 @@
+# M5 device frontends — implementation plan
+
+**Status:** not started. No task done; no hardware purchased.
+**Companions:** [device-frontends-vision.md](device-frontends-vision.md) (why · the six screens · the
+poll protocol · every measured figure) · [architecture.md](architecture.md) §1.2, §10.8, §11.1 (where
+the bridge sits, how it is tested, the two `v` fields) · [device/prototype.html](device/prototype.html)
+(the screens, rendered from the exact frames — the visual contract for M5-016).
+
+**Where each task's detail lives.** Tasks state *what* and *when*. The binding contract for anything
+about frames, screens, cadence or notifications is **device-frontends-vision.md**, which owns it; this
+file does not restate it. A task's acceptance criteria are the checkable subset, never a replacement
+for the spec.
+
+**ID namespace: `M5-###`.** Deliberately not `TRK-###` and not `ARENA-###`. Architecture §1.1 gives the
+full reasoning; the short version is three lifecycles that must never share a counter — and one of
+these needs a board plugged in, which neither of the others does.
+
+---
+
+## Decisions taken before task 1
+
+Settled here so no task re-litigates them. Everything in this table is already argued in the vision
+doc; it is repeated as a decision record, not as a second source of truth.
+
+| Decision | Rationale |
+|---|---|
+| **The device polls; the bridge never pushes.** | Nothing on any screen changes faster than once per three minutes (vision §2.2). Polling removes the scheduler, change-detection and per-device state from the bridge, leaving `(screen) → JSON`. |
+| **Every computation is on the bridge.** No arithmetic beyond value→pixel on the device, no history, no logging, no timers, no state between frames. | It moves logic out of the only place that can be checked solely by eye. `device/shared/` collapses to a JSON parser (vision §3.1). |
+| **One JSON per screen, ASCII only, one BLE write.** | The screen bounds the frame; the largest is 164 B against a ~182 B limit. ASCII means the stock Latin font suffices — no glyph set to ship, no empty boxes that only appear on hardware. |
+| **`bridge/` may use third-party packages; `tracker/` and `hooks/` still may not.** | The bridge is a separate process started deliberately, exactly like `dashboard/`. `codegen/tests/test_dependencies.py` scopes the stdlib rule to `tracker`/`hooks` already — `bleak` goes in `requirements.txt` and that test keeps passing unchanged, but its **comment** naming the file "dashboard and test only" must be widened (M5-001). |
+| **Bridge tests live in `codegen/tests/`.** | Same `pytest`, same autouse `CODEGEN_RUNS_DIR` isolation. A third test directory would buy nothing and cost a second command. |
+| **Firmware tests are a separate runner.** | C++ on the host via PlatformIO. Only the frame parser is host-testable; the rest is a display. |
+| **No skill builds this**, same as the tracker. | The decomposition those skills perform is already done — it is this file. |
+| **`M5-###` never appears in a commit subject.** | Conventional prefixes only: `feat(bridge):`, `test(bridge):`, `feat(device):`, `docs(codegen):`. The id may appear in the body. |
+| **Progress is tracked by ticking this file's checkboxes.** | Ids are absent from git and GitHub, so these boxes are the record. Tick them in the commit that satisfies them. |
+| **Dark theme only.** | The panel sits in a lit room, and one palette is one palette to keep validated. Copied verbatim from the dark block of `dashboard/static/styles.css`. |
+
+---
+
+## Task summary
+
+| # | ID | Title | Size | Step | Hardware | Dependencies |
+|---|----|-------|------|------|:---:|--------------|
+| 1 | M5-001 | `bridge/` scaffolding + device profiles | S | 1 | — | — |
+| 2 | M5-002 | Frame schema + the two guards | M | 1 | — | M5-001 |
+| 3 | M5-003 | `project()` — the pure projection | M | 1 | — | M5-002 |
+| 4 | M5-004 | Derived statistics for the six screens | L | 1 | — | M5-003 |
+| 5 | M5-005 | Golden frames from real runs | M | 1 | — | M5-004 |
+| 6 | M5-006 | Notification catalogue + queue | M | 2 | — | M5-003 |
+| 7 | M5-007 | `next` pacing and the `dim` ladder | M | 2 | — | M5-006 |
+| 8 | M5-008 | `g` navigation | S | 2 | — | M5-007 |
+| 9 | M5-009 | Poll loop + `FakeTransport` | M | 3 | — | M5-007 |
+| 10 | M5-010 | `--fake-device` + CI wiring | S | 3 | — | M5-009 |
+| 11 | M5-011 | `BleakTransport` | M | 3 | — | M5-009 |
+| 12 | M5-012 | `device/shared/` — the frame parser | M | 4 | — | M5-002 |
+| 13 | M5-013 | PlatformIO scaffolding, two targets | S | 5 | **Core2** | M5-012 |
+| 14 | M5-014 | BLE peripheral + **MTU verification** | M | 5 | **Core2** | M5-013, M5-011 |
+| 15 | M5-015 | The drawing toolkit | M | 5 | **Core2** | M5-013 |
+| 16 | M5-016 | The six Core2 screens | L | 5 | **Core2** | M5-015, M5-014 |
+| 17 | M5-017 | Output: vibration, chime, backlight, touch | M | 6 | **Core2** | M5-016, M5-008 |
+| 18 | M5-018 | StickC profile + layouts | M | 7 | **StickC** | M5-016 |
+| 19 | M5-019 | StickC sleep and wake | S | 7 | **StickC** | M5-018, M5-017 |
+| 20 | M5-020 | Two devices at once | M | 8 | both | M5-019, M5-012 |
+
+**Size legend:** S = 1–2 d · M = 3–5 d · L = 5–8 d
+
+**Twelve of twenty tasks need no hardware**, and they carry the majority of the system's logic —
+every statistic, every graph, every notification decision. M5-013 is the first purchase.
+
+**Working discipline.** No skill enforces this, so it is stated:
+
+1. **One task = one commit.** Never mix two M5 tasks; never start one whose dependencies are unmet.
+2. **Validate before committing** — `pytest codegen/tests`,
+   `mypy --config-file codegen/pyproject.toml codegen/`, `ruff check codegen/`, all green. Never
+   commit red. The `--config-file` is not optional; see `implementation-plan.md`'s note on why.
+3. **Walk the acceptance criteria explicitly** and tick each box in the same commit.
+4. **Tests ship with the task**, not after it.
+5. If a task's scope turns out wrong, **correct the vision doc first, then this file, then implement.**
+   The vision doc is the contract; a plan that drifts from it is worse than no plan.
+
+---
+
+## Dependency tree
+
+```
+M5-001 (scaffolding)
+  └── M5-002 (schema + guards) ──┬── M5-003 (project) ──┬── M5-004 (statistics) ── M5-005 (golden)
+                                 │                      └── M5-006 (notifications) ── M5-007 (next+dim) ──┬── M5-008 (goto)
+                                 │                                                            │           │
+                                 │                                                            └── M5-009 (poll+fake) ──┬── M5-010 (CI)
+                                 │                                                                                      └── M5-011 (bleak)
+                                 └── M5-012 (frame parser, C++) ──── M5-013 (platformio) ──┬── M5-014 (BLE + MTU) ◄─────┘
+                                                                                            └── M5-015 (drawing) ──┬── M5-016 (six screens)
+                                                                                                                    └── M5-017 (output) ──┐
+                                                                                          M5-018 (stickc) ── M5-019 (sleep) ◄─────────────┘
+                                                                                                                    └── M5-020 (both)
+```
+
+**Parallelisation.** After M5-002 the projection track (003–005) and the firmware-parser track (012)
+are independent — the parser can be written and host-tested while the statistics are still being
+built. Notifications (006–008) need only M5-003.
+
+**Earliest useful point:** M5-010. At that point the whole system runs end to end against a real
+dashboard with no hardware at all, which is also the point where buying a board stops being a gamble.
+
+---
+
+## Step 1 — Projection
+
+### M5-001 — `bridge/` scaffolding + device profiles
+
+**Description:** Directory, dependency, and the profile objects that make `project()` device-aware.
+No behaviour.
+
+**Implementation:**
+- Create `codegen/bridge/` with `__init__.py`.
+- Add `bleak` to `codegen/requirements.txt`, and **widen its header comment**: it currently says the
+  file is for "the DASHBOARD and the TEST SUITE only", which will be false. `tracker/` and `hooks/`
+  remain stdlib-only, and `test_dependencies.py` already scopes the rule to those two — but its
+  `test_requirements_are_documented_as_dashboard_and_test_only` asserts on that comment's wording, so
+  the test and the comment change together.
+- `bridge/devices.py`: a `Profile` describing a board — screen size, character budget per line, which
+  screens it has, its poll intervals, its `dim` ladder. Two instances: `CORE2`, `STICKC`.
+- Profiles are **data, not code paths.** `project()` reads them; it never branches on a board name.
+
+**Dependencies:** None
+
+**Acceptance criteria:**
+- [ ] `pytest codegen/tests` still passes without `bleak` installed *(nothing imports it yet)*.
+- [ ] `test_dependencies.py` passes: `tracker/` and `hooks/` still import only the stdlib.
+- [ ] `CORE2` and `STICKC` differ in screen size, screen list and ladder — asserted, so a copy-paste
+      profile fails.
+- [ ] `mypy` and `ruff` clean over `codegen/bridge/`.
+
+---
+
+### M5-002 — Frame schema + the two guards
+
+**Description:** The seven frame shapes and the two assertions that keep them shippable. This is the
+contract the firmware will parse, so it lands before anything produces one.
+
+**Implementation:**
+- `bridge/frames.py`: a schema per `want` value (0 notifications, 1–6 screens) per vision §2.3.
+  Stdlib validation, same approach as `tracker/schema.py` — no `jsonschema`.
+- Two guards, as helpers used by every later test:
+  `assert_fits(frame)` → serialised length ≤ 182 B; `assert_ascii(frame)` → `.isascii()`.
+- The limit is a named constant with the reasoning attached (vision §2.3.1), not a bare `182`.
+
+**Dependencies:** M5-001
+
+**Acceptance criteria:**
+- [ ] All seven frame types validate a good example and reject one missing each required key.
+- [ ] `assert_fits` rejects a 183-byte frame and accepts a 182-byte one.
+- [ ] `assert_ascii` rejects `·`, `–` and `×` — the three that were caught in review.
+- [ ] Every field the vision doc's frame tables name is present in the schema; a test compares the two
+      lists so the doc and the code cannot drift.
+
+---
+
+### M5-003 — `project()` — the pure projection
+
+**Description:** `state dict + profile + screen → frame`. Pure, and the single place any device value
+is decided.
+
+**Implementation:**
+- `bridge/project.py`: `project(state, profile, screen) -> dict`. No clock, no I/O, no environment —
+  the same purity rule as `tracker/reduce.py`, and for the same reason: it is what makes golden tests
+  possible.
+- String truncation to the profile's budget happens here. So does formatting: elapsed to `MM:SS` at
+  minute granularity, ETA to a range, percentages to integers.
+- **Text is composed from identifiers, never copied from the log** (vision §5.1). A test asserts no
+  value in any frame appears verbatim in the source state's free-text fields.
+
+**Dependencies:** M5-002
+
+**Acceptance criteria:**
+- [ ] An AST test asserts `project.py` calls no `datetime.now`, `time.time`, `os.environ`, or `open`.
+- [ ] Projecting the same state twice yields byte-identical output.
+- [ ] The same state projected for `CORE2` and `STICKC` yields **different** frames, and both fit.
+- [ ] Every produced frame passes both M5-002 guards, for every screen and both profiles.
+- [ ] No frame value equals any free-text field of the source state (the redaction-by-construction
+      rule).
+
+---
+
+### M5-004 — Derived statistics for the six screens
+
+**Description:** The arithmetic behind every number and every graph. The largest task in the plan, and
+the one that would otherwise have ended up in C++.
+
+**Implementation:** Per vision §5, computed from `state.json` alone:
+- **NOW** — the `version · issue · step` label built from the deepest *running* tree node, **not** from
+  `state.current`, which is degenerate (vision §9.4). Issue age against the median for its step type,
+  reduced to a colour class.
+- **VELOCITY** — issues closed per 30-minute bucket, quantised to eight levels.
+- **PLAN** — one ASCII flag per version.
+- **FRICTION** — retry count and ranking, findings by severity.
+- **ANALYTICS** — per-step-type **medians and shares over closed spans only**, plus the `cov`
+  coverage percentage. Medians, not sums, precisely because a single unclosed node cannot distort a
+  median (vision §9.1).
+- **BURNDOWN** — remaining issues from `issue.closed`, **not** from `state.burndown`, which is
+  non-monotonic (vision §9.3). Estimate reference line and the projection cone.
+
+**Dependencies:** M5-003
+
+**Acceptance criteria:**
+- [ ] Against `run-20260815-213849`, VELOCITY reproduces `15 · 7 · 2 · 2 · 6 · 4 · 6`.
+- [ ] ANALYTICS reproduces `execute 41% · upload 26% · review 16% · release 10% · generate 7%` and
+      `cov: 42`, and is **unchanged** when an unclosed 155-minute node is injected.
+- [ ] BURNDOWN's series is monotonically non-increasing, for every fixture including the malformed ones.
+- [ ] The NOW label is `version · issue · step` on a **live** fixture; a test pins that it is not read
+      from `state.current`.
+- [ ] `cov` reaches 100 on a synthetic log with no unclosed step nodes — so the badge will show the
+      instrumentation fix landing.
+- [ ] Every statistic has a test naming the real run's figure it must reproduce.
+
+---
+
+### M5-005 — Golden frames from real runs
+
+**Description:** Freeze the output. The equivalent of TRK-008, and the thing that makes later refactors
+safe.
+
+**Implementation:** For each of the seven `want` values × both profiles, a committed expected frame
+under `codegen/tests/fixtures/frames/`, generated from real reduced states in `runs/` and from
+`tests/gen_log.py` presets. Regeneration behind an explicit `--update-golden`, never by default.
+
+**Dependencies:** M5-004
+
+**Acceptance criteria:**
+- [ ] 14 golden frames committed; each reproduces exactly.
+- [ ] Every golden frame passes both guards.
+- [ ] A deliberate one-character change to a projection produces a failing diff naming the field.
+- [ ] Golden frames are generated, not hand-written — asserted by regenerating in CI and diffing.
+
+---
+
+## Step 2 — Notifications and pacing
+
+### M5-006 — Notification catalogue + queue
+
+**Description:** The `want:0` channel. Alerts and events are one list; only `b` separates them.
+
+**Implementation:**
+- `bridge/notify.py`: map log events to notifications per the vision §5.1 catalogue, each with its `k`,
+  composed `t`, and volume `b` 0–3.
+- A queue draining oldest-first, at most three per answer (the size limit), the remainder carried over.
+- **Dropped once answered.** A lost write costs one buzz, which is accepted: the buzz is the
+  notification and the screen is the record.
+
+**Dependencies:** M5-003
+
+**Acceptance criteria:**
+- [ ] Against the real run, exactly 57 notifications are raised, matching the vision §5.1 counts per
+      type.
+- [ ] `issue.failed` and `harden.finding.held` map to `b:3` even though the run contains none — the
+      catalogue is complete, not sampled.
+- [ ] A burst of five raises three in one answer and two in the next, in order.
+- [ ] An answered notification never reappears.
+- [ ] Every `t` is ASCII and composed from identifiers.
+
+---
+
+### M5-007 — `next` pacing and the `dim` ladder
+
+**Description:** The two fields by which the bridge controls the device's behaviour without the device
+holding any policy.
+
+**Implementation:**
+- `next` per vision §4.2: the per-screen intervals while a run is active, 60 s once it ends or when
+  there is no run.
+- `dim` per vision §4.4: the ladder derived from the NOW interval — Core2 `100 → 50 → 20`, StickC
+  `100 → 0`, at 2× and 3×. **Derived, never a constant**: retuning the NOW interval must move the
+  ladder with it.
+- Any inbound `want` resets the ladder — the bridge treats a poll as *the user is present* only when it
+  was caused by a press or a tap, so the loop must distinguish a scheduled poll from an interaction.
+
+**Dependencies:** M5-006
+
+**Acceptance criteria:**
+- [ ] Changing the NOW interval in the profile moves both ladder steps, with no other edit.
+- [ ] A finished run yields `next: 60` on every screen.
+- [ ] Idle 30 s → Core2 `dim:50`, StickC `dim:0`; idle 45 s → Core2 `dim:20`; Core2 never emits `dim:0`.
+- [ ] An interaction poll resets to `dim:100`; a scheduled poll does not.
+- [ ] `dim` and `next` are present in **every** answer, including the idle notification response.
+
+---
+
+### M5-008 — `g` navigation
+
+**Description:** The bridge, not the device, decides which screen is showing.
+
+**Implementation:** `g` on an alert switches the device to the relevant screen; `g:1` returns it to NOW
+thirty seconds after the last interaction. Both timers live here, in Python.
+
+**Dependencies:** M5-007
+
+**Acceptance criteria:**
+- [ ] A retry notification carries `g:4`; a silent `release.tagged` carries no `g`.
+- [ ] Thirty seconds after the last interaction, the next answer carries `g:1`; before that, none does.
+- [ ] `g` is absent, not `null`, when there is nothing to navigate to — a byte saved on every answer.
+
+---
+
+## Step 3 — The bridge process
+
+### M5-009 — Poll loop + `FakeTransport`
+
+**Description:** The loop that answers polls, and the fake that makes it testable without a radio.
+
+**Implementation:**
+- `bridge/transport.py`: one interface, two implementations. `FakeTransport` records every write and
+  lets a test drive polls synchronously.
+- `bridge/main.py`: subscribe to `ws://127.0.0.1:8420/ws`, hold the latest state, answer `want` with
+  `project(...)`. Reconnect to the dashboard with backoff; a dashboard that is down must never crash
+  the bridge.
+
+**Dependencies:** M5-007
+
+**Acceptance criteria:**
+- [ ] A `want:N` produces exactly one write, carrying screen N.
+- [ ] An unknown `want` is ignored, not answered with a malformed frame.
+- [ ] The dashboard dropping mid-run does not kill the bridge; it reconnects and resumes answering.
+- [ ] Polls arriving before the first WS frame get an answer that says so, rather than an empty frame.
+- [ ] Every write in a full simulated run passes both guards — asserted over the whole run, not sampled.
+
+---
+
+### M5-010 — `--fake-device` + CI wiring
+
+**Description:** The whole system, end to end, with no hardware. The point at which buying a board
+stops being a gamble.
+
+**Implementation:** A mode that drives `FakeTransport` on a realistic poll schedule against a live
+dashboard, and a CI job that replays a recorded run through it using `tests/replay.py`.
+
+**Dependencies:** M5-009
+
+**Acceptance criteria:**
+- [ ] `bridge/main.py --fake-device` runs a full replayed run start to finish with no hardware present.
+- [ ] It runs in CI and fails on any guard violation.
+- [ ] A four-hour recorded run replays in under a minute.
+- [ ] The run exercises every screen and at least one notification of each volume level.
+
+---
+
+### M5-011 — `BleakTransport`
+
+**Description:** The real radio. Swaps in behind the same interface.
+
+**Implementation:** `bleak` central: scan for the advertised name, connect, subscribe to `input`
+notifications, answer on `frame`. Per-device reconnect with backoff.
+
+**Dependencies:** M5-009
+
+**Acceptance criteria:**
+- [ ] Substituting `BleakTransport` for `FakeTransport` requires no change in `main.py`.
+- [ ] A device walking out of range and returning reconnects without a restart.
+- [ ] The bridge starts and stays healthy with **no device present at all** — the normal state.
+- [ ] Scanning is bounded; a missing device never blocks the loop.
+
+---
+
+## Step 4 — Firmware, without a board
+
+### M5-012 — `device/shared/` — the frame parser
+
+**Description:** The whole shared library. §3.1 of the vision doc left nothing else to share.
+
+**Implementation:** C++ parsing a frame into a struct, compiled and tested on the host. No display, no
+radio, no board.
+
+**Dependencies:** M5-002
+
+**Acceptance criteria:**
+- [ ] Every golden frame from M5-005 parses to the expected struct.
+- [ ] A truncated frame is rejected without reading past the buffer.
+- [ ] A frame with an unknown `v` is rejected in a way the caller can render as "firmware too old",
+      not as garbage.
+- [ ] Unknown fields are ignored, so a bridge adding one does not require a reflash.
+- [ ] The host test suite runs with no board attached and is wired into the same CI job as M5-010.
+
+---
+
+## Step 5 — Core2
+
+> **From here a board is required.** M5-014's first job is the MTU check that the whole frame budget
+> rests on — do it before writing a renderer, because it is the one number in the design that could
+> still be wrong.
+
+### M5-013 — PlatformIO scaffolding, two targets
+
+**Description:** One tree, two boards.
+
+**Implementation:** One `platformio.ini` with `[env:core2]` and `[env:stickc]` over one shared `lib/`.
+M5Unified (one API across both, and it absorbs the AXP192/AXP2101 split and the StickC's GPIO4
+power-hold) plus NimBLE-Arduino (roughly half the RAM of Bluedroid).
+
+**Dependencies:** M5-012
+
+**Acceptance criteria:**
+- [ ] Both targets build from a clean checkout.
+- [ ] `shared/` is compiled into both, from one copy — asserted by a build that fails if it is duplicated.
+- [ ] The Core2 target boots to a blank screen without a crash loop, on both board revisions if both
+      are available.
+
+---
+
+### M5-014 — BLE peripheral + MTU verification
+
+**Description:** The GATT service, and the measurement the frame budget depends on.
+
+**Implementation:** Three characteristics per vision §4 — `input` (Notify), `frame` (Write Without
+Response), `info` (Read). Advertise a stable name the bridge can find.
+
+**Dependencies:** M5-013, M5-011
+
+**Acceptance criteria:**
+- [ ] **`client.mtu_size - 3` is printed and recorded in the vision doc.** If it is below 182, the
+      documented one-argument fallback is applied and the frame table is revised in the same commit.
+- [ ] A frame written by the real bridge arrives intact and parses.
+- [ ] A button press produces an `input` notification the bridge receives.
+- [ ] `info` reports the board type and the frame `v` this firmware understands.
+- [ ] Disconnecting the central raises the radio's disconnect event, and the device draws the
+      disconnected screen without a timer (vision §4.3).
+
+---
+
+### M5-015 — The drawing toolkit
+
+**Description:** The primitives every screen is built from. Written once, before six screens need them.
+
+**Implementation:** LovyanGFX into an off-screen `LGFX_Sprite`: anti-aliased arc, smooth polyline,
+smooth circle, rounded rect, and the dark palette as named constants copied verbatim from
+`dashboard/static/styles.css`. **Full repaint only** — there is no previous frame to diff against.
+
+**Dependencies:** M5-013
+
+**Acceptance criteria:**
+- [ ] A full-screen repaint completes in under 200 ms, measured on the board.
+- [ ] The sprite fits PSRAM with the measured headroom recorded.
+- [ ] Nothing flickers on repeated repaint.
+- [ ] Palette constants match `styles.css`'s dark block exactly — asserted by a script comparing the
+      two files, so a CSS tweak cannot silently desync the panel.
+
+---
+
+### M5-016 — The six Core2 screens
+
+**Description:** Render all six against the prototype.
+
+**Implementation:** One renderer per screen, each a pure `frame → pixels`. `device/prototype.html` is
+the visual contract; differences are bugs in the firmware, not in the prototype.
+
+**Dependencies:** M5-015, M5-014
+
+**Acceptance criteria:**
+- [ ] All six render from real frames produced by the real bridge.
+- [ ] Each is legible from two metres — checked by eye, the §10.7 rule.
+- [ ] Sparklines, version dots and the progress ring are drawn as **shapes**, never as glyphs; the font
+      renders only `[A-Za-z0-9 .:/%-]`.
+- [ ] `sample 42%` appears on ANALYTICS and the estimate line is labelled `estimate`, never `ideal` —
+      both are honesty requirements, not styling.
+- [ ] A frame arriving for a screen that is not showing is parsed and discarded without a repaint.
+
+---
+
+## Step 6 — Core2 output
+
+### M5-017 — Vibration, chime, backlight, touch
+
+**Description:** Everything the panel does that is not drawing.
+
+**Implementation:** Map `b` 0–3 to silence, chime, short and long buzz. Apply `dim` to the backlight.
+A touch anywhere sends `{"want":N}` for the current screen. `g` switches screens.
+
+**Dependencies:** M5-016, M5-008
+
+**Acceptance criteria:**
+- [ ] Each of the four `b` levels is distinguishable by feel and ear.
+- [ ] A silent notification (`b:0`) still lights the screen — `b` controls sound and haptics only.
+- [ ] A tap restores full brightness and refreshes the current screen.
+- [ ] `dim:20` is readable across a room and is not a light source in a dark one — the judgement call
+      §4.4 rests on, confirmed by eye.
+- [ ] Every notification fires exactly once; nothing double-buzzes.
+
+---
+
+## Step 7 — StickC Plus2
+
+### M5-018 — StickC profile + layouts
+
+**Description:** The second board. A port, not a redesign.
+
+**Implementation:** `[env:stickc]`, the `STICKC` profile, and 240×135 layouts. NOW compressed, the rest
+per vision §1.1.
+
+**Dependencies:** M5-016
+
+**Acceptance criteria:**
+- [ ] Frames for `STICKC` are measurably smaller than for `CORE2` on the same state.
+- [ ] Every StickC layout is legible at arm's length.
+- [ ] The renderers share the drawing toolkit; nothing is duplicated from `core2/`.
+
+---
+
+### M5-019 — StickC sleep and wake
+
+**Description:** What makes it a pager rather than a small display.
+
+**Implementation:** Screen off at `dim:0`. Wake on notification or button A, for the duration the
+bridge specifies. Polling continues while dark — that is how a notification arrives.
+
+**Dependencies:** M5-018, M5-017
+
+**Acceptance criteria:**
+- [ ] The screen is dark for the great majority of an idle run.
+- [ ] A notification wakes it, and it darkens again after the specified duration.
+- [ ] Polling continues while dark — verified by the bridge's logs, not assumed.
+- [ ] Battery life is **measured** across a real run and recorded in the vision doc, replacing the
+      current estimate.
+
+---
+
+## Step 8 — Both
+
+### M5-020 — Two devices at once
+
+**Description:** Independent loops, independent failures.
+
+**Implementation:** `devices.py` holds a roster; each device gets its own transport, its own poll
+schedule and its own reconnect.
+
+**Dependencies:** M5-019, M5-012
+
+**Acceptance criteria:**
+- [ ] Both boards run against one bridge, each on its own cadence.
+- [ ] Unplugging one does not stall the other — the case two `FakeTransport`s exist to cover.
+- [ ] Both show the **same figures** where the screens overlap; a discrepancy is a projection bug.
+- [ ] Adding a third roster entry needs no code change beyond a profile.
+
+---
+
+## Validation workload
+
+**The device is validated against a real `/ship-phase` run**, not a synthetic one — the same run that
+validates the tracker, watched from the desk instead of the browser.
+
+What a real run yields that a replay cannot:
+
+- **The MTU number** (M5-014), which nothing else can produce.
+- **Real notification pacing.** 57 notifications over 4.1 hours is a number from a log; whether that
+  *feels* right on a desk is not.
+- **Battery figures** (M5-019), replacing the estimates in the vision doc.
+- **The `dim:20` judgement**, which is a question about a room and cannot be answered anywhere else.
+
+Two things to plan for rather than discover:
+
+- **`state.current` is degenerate on a finished run** (vision §9.4). The NOW label must be checked
+  against a **live** run — a finished one has no running node, so the bug is invisible there.
+- **The instrumentation defects in vision §9 are not fixed by this plan.** ANALYTICS and BURNDOWN are
+  built to survive them, and `cov` is the visible symptom. When [#113](https://github.com/ichMaster/agent-arena-sandbox/issues/113)
+  lands, `cov` should rise toward 100 on its own — which is also how that fix gets confirmed.
+
+---
+
+## Definition of done for the whole plan
+
+- [ ] A real `/ship-phase` run is watched end to end on the Core2, from first notification to release
+      chime, with no manual intervention.
+- [ ] Both boards run simultaneously against one bridge and agree.
+- [ ] `pytest codegen/tests` green; `mypy --config-file codegen/pyproject.toml codegen/` and
+      `ruff check codegen/` clean.
+- [ ] Every frame written during that run passed both guards — asserted over the run, not sampled.
+- [ ] The measured MTU is recorded in the vision doc, and the frame table reflects it.
+- [ ] `rm -rf codegen/` still leaves a working repo.
+- [ ] Killing the bridge mid-run leaves the pipeline untouched — the observability guarantee, one hop
+      further out than the tracker's.
+
+## Out of scope
+
+Any control over the pipeline from a device — permanently, for the three reasons in vision §6 ·
+pairing or bonding (vision §10.1, an accepted risk) · per-device run selection (vision §10.3) · a
+third board · anything that would put a computation, a timer or a byte of history back on the
+firmware.

@@ -247,3 +247,4 @@ real log.
 | [implementation-plan.md](implementation-plan.md) | the 24 build tasks, and the validation workload |
 | [device-frontends-vision.md](device-frontends-vision.md) | design vision — a Core2 desk display and a StickC Plus2 pager as ambient frontends over BLE (not built) |
 | [device-frontends-vision.uk.md](device-frontends-vision.uk.md) | Ukrainian translation of the above (the English version is the source of truth) |
+| [m5-implementation-plan.md](m5-implementation-plan.md) | the 20 `M5-###` tasks for the bridge and the firmware — 12 need no hardware |

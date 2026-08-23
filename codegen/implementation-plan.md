@@ -8,6 +8,10 @@ dashboard shows) · [architecture.md](architecture.md) (contracts · formats · 
 DOM, rendering, a11y) · [dashboard/prototype.html](dashboard/prototype.html) (the reference
 implementation, already built and rendering in both themes).
 
+**A sibling plan exists.** The BLE device frontends are built under their own namespace and their own
+lifecycle — see [m5-implementation-plan.md](m5-implementation-plan.md) and architecture.md §1.1. This
+plan is complete and stays that way; new device work does not extend it.
+
 **Where each task's detail lives.** Tasks state *what* and *when*; the binding contract for any task is
 whichever companion owns it — `architecture.md` for TRK-001…018, `dashboard-specification.md` for
 TRK-019…022. A task's acceptance criteria are the checkable subset, not a replacement for the spec.

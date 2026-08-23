@@ -8,7 +8,8 @@ over Bluetooth Low Energy. An *addition* to the browser dashboard, never a repla
 Companion documents: [ship-phase-tracking-vision.md](ship-phase-tracking-vision.md) (why tracking
 exists), [architecture.md](architecture.md) (the event log and reducer),
 [dashboard-specification.md](dashboard-specification.md) (the web UI this projects from),
-[device/prototype.html](device/prototype.html) (the six screens, rendered from the real frames).
+[device/prototype.html](device/prototype.html) (the six screens, rendered from the real frames),
+[m5-implementation-plan.md](m5-implementation-plan.md) (the 20 `M5-###` tasks that build this).
 
 > Ukrainian translation: [device-frontends-vision.uk.md](device-frontends-vision.uk.md). This
 > English version is the source of truth — update it first.
