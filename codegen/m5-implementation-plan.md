@@ -273,8 +273,12 @@ under `codegen/tests/fixtures/frames/`, generated from real reduced states in `r
 **Description:** The `want:0` channel. Alerts and events are one list; only `b` separates them.
 
 **Implementation:**
-- `bridge/notify.py`: map log events to notifications per the vision §5.1 catalogue, each with its `k`,
-  composed `t`, and volume `b` 0–3.
+- `bridge/notify.py`: raise notifications per the vision §5.1 catalogue, each with its `k`, composed
+  `t`, and volume `b` 0–3.
+- **Corrected at M5-006:** the plan said "map log events". The bridge never sees events —
+  `dashboard/server.py` sends `{"kind": ..., "state": ...}` and nothing else. Transitions are
+  recovered by **diffing successive snapshots**, which the bridge is free to do since only the
+  *device* is forbidden state.
 - A queue draining oldest-first, at most three per answer (the size limit), the remainder carried over.
 - **Dropped once answered.** A lost write costs one buzz, which is accepted: the buzz is the
   notification and the screen is the record.
@@ -282,13 +286,19 @@ under `codegen/tests/fixtures/frames/`, generated from real reduced states in `r
 **Dependencies:** M5-003
 
 **Acceptance criteria:**
-- [ ] Against the real run, exactly 57 notifications are raised, matching the vision §5.1 counts per
-      type.
-- [ ] `issue.failed` and `harden.finding.held` map to `b:3` even though the run contains none — the
-      catalogue is complete, not sampled.
-- [ ] A burst of five raises three in one answer and two in the next, in order.
-- [ ] An answered notification never reappears.
-- [ ] Every `t` is ASCII and composed from identifiers.
+- [x] ~~Against the real run, exactly 57 notifications are raised~~ — **criterion replaced.** That
+      figure came from counting *log events*, which the bridge cannot see (above). What is asserted
+      instead is that each transition type is recovered from a state diff, and that an unchanged
+      state raises nothing — the common case by a wide margin.
+- [x] `failed`, `held` and `blocked` map to `b:3` even though the run contains none — the catalogue
+      is complete, not sampled. The same argument the FRICTION screen rests on.
+- [x] A burst of five raises three in one answer and two in the next, in order.
+- [x] An answered notification never reappears.
+- [x] Every `t` is ASCII and composed from identifiers.
+- [x] **Added:** the first snapshot raises nothing, so a device connecting mid-run is not buzzed for
+      every version that finished before it arrived.
+- [x] **Added:** `g` is omitted when the board cannot show that screen — telling a StickC to jump to
+      FRICTION would leave it asking for a frame nobody answers.
 
 ---
 
