@@ -187,12 +187,17 @@ is decided.
 **Dependencies:** M5-002
 
 **Acceptance criteria:**
-- [ ] An AST test asserts `project.py` calls no `datetime.now`, `time.time`, `os.environ`, or `open`.
-- [ ] Projecting the same state twice yields byte-identical output.
-- [ ] The same state projected for `CORE2` and `STICKC` yields **different** frames, and both fit.
-- [ ] Every produced frame passes both M5-002 guards, for every screen and both profiles.
-- [ ] No frame value equals any free-text field of the source state (the redaction-by-construction
-      rule).
+- [x] An AST test asserts `project.py` **and `stats.py`** call no `datetime.now`, `time.time`,
+      `os.environ`, or `open`.
+- [x] Projecting the same state twice yields byte-identical output.
+- [x] ~~The same state projected for `CORE2` and `STICKC` yields **different** frames~~ —
+      **criterion corrected.** With a short label both budgets fit and the frames are byte identical,
+      which is right, not a bug. What differs is the *budget*, and only when the text exceeds the
+      narrower one. Asserted that way instead.
+- [x] Every produced frame passes both M5-002 guards, for every screen and both profiles — and for
+      four fixtures including the damaged ones, since a panel that crashes on an aborted run fails
+      exactly when you most want to look at it.
+- [x] No frame value equals any free-text field of the source state (redaction by construction).
 
 ---
 
@@ -217,15 +222,19 @@ the one that would otherwise have ended up in C++.
 **Dependencies:** M5-003
 
 **Acceptance criteria:**
-- [ ] Against `run-20260815-213849`, VELOCITY reproduces `15 · 7 · 2 · 2 · 6 · 4 · 6`.
-- [ ] ANALYTICS reproduces `execute 41% · upload 26% · review 16% · release 10% · generate 7%` and
-      `cov: 42`, and is **unchanged** when an unclosed 155-minute node is injected.
-- [ ] BURNDOWN's series is monotonically non-increasing, for every fixture including the malformed ones.
-- [ ] The NOW label is `version · issue · step` on a **live** fixture; a test pins that it is not read
-      from `state.current`.
-- [ ] `cov` reaches 100 on a synthetic log with no unclosed step nodes — so the badge will show the
-      instrumentation fix landing.
-- [ ] Every statistic has a test naming the real run's figure it must reproduce.
+- [x] Against `run-20260815-213849`, VELOCITY reproduces `15 · 7 · 2 · 2 · 6 · 4 · 6` — as
+      `[0, 15, 7, 2, 2, 6, 4, 6]`. **The leading zero is real and kept:** the opening half-hour closes
+      nothing, the same fact BURNDOWN's flat first points show. A trailing *partial* bucket is dropped,
+      since a five-minute bucket reading zero draws a cliff that never happened.
+- [x] ANALYTICS reproduces `41 · 26 · 16 · 10 · 7` and `cov: 42`, and is **unchanged** when an
+      unclosed 155-minute node is injected — the property that let the screen ship without waiting.
+- [x] BURNDOWN's series is monotonically non-increasing, on the real run and on four fixtures.
+- [x] The NOW label is built from the tree, and a test pins that `state.current` really is
+      `"execute-issues · execute-issues · execute-issues"` while the label reads `v05.03 ARENA-112`.
+- [ ] ~~`cov` reaches 100 on a synthetic log with no unclosed step nodes~~ — **deferred to M5-005**,
+      where the generator can produce such a log. Nothing in the recorded run exercises it.
+- [x] Every statistic has a test naming the real run's figure it must reproduce. Tests touching the
+      recorded run skip cleanly when `runs/` is absent, since it is gitignored.
 
 ---
 
